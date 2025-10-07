@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import LoginPage from './pages/LoginPage';
 import AdHocAssessmentsPage from './pages/AdHocAssessmentsPage';
 import AssessmentEntryPage from './pages/AssessmentEntryPage';
@@ -13,6 +13,28 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [currentPage, setCurrentPage] = useState('adhoc');
   const [sessionId, setSessionId] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Restore login state from localStorage on app load
+  useEffect(() => {
+    const savedUserId = localStorage.getItem('msh3_userId');
+    const savedUserData = localStorage.getItem('msh3_userData');
+    
+    if (savedUserId && savedUserData) {
+      try {
+        const userData = JSON.parse(savedUserData);
+        setCurrentUserId(savedUserId);
+        setCurrentUser(userData);
+        console.log('Restored login from localStorage:', savedUserId);
+      } catch (error) {
+        console.error('Error restoring login state:', error);
+        localStorage.removeItem('msh3_userId');
+        localStorage.removeItem('msh3_userData');
+      }
+    }
+    
+    setIsLoading(false);
+  }, []);
 
   const handleLogin = (userId, userData) => {
     console.log('Login:', userId, userData);
@@ -20,6 +42,10 @@ function App() {
     setCurrentUser(userData);
     setCurrentPage('adhoc');
     setSessionId(null);
+    
+    // Save login state to localStorage
+    localStorage.setItem('msh3_userId', userId);
+    localStorage.setItem('msh3_userData', JSON.stringify(userData));
   };
 
   const handleLogout = () => {
@@ -28,6 +54,10 @@ function App() {
     setCurrentUser(null);
     setCurrentPage('adhoc');
     setSessionId(null);
+    
+    // Clear login state from localStorage
+    localStorage.removeItem('msh3_userId');
+    localStorage.removeItem('msh3_userData');
   };
 
   const handleNavigate = (page, data = null) => {
@@ -43,6 +73,24 @@ function App() {
       setSessionId(null);
     }
   };
+
+  // Show loading state while checking localStorage
+  if (isLoading) {
+    return (
+      <div className="App" style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        minHeight: '100vh',
+        backgroundColor: '#f9fafb'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '24px', color: '#3b82f6', marginBottom: '16px' }}>MSH³ 360</div>
+          <div style={{ color: '#6b7280' }}>Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   // Show login page if no user is logged in
   if (!currentUserId) {
