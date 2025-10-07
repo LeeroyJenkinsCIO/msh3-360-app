@@ -15,21 +15,41 @@ function App() {
   const [sessionId, setSessionId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Restore login state from localStorage on app load
+  // Restore login state AND current page from localStorage on app load
   useEffect(() => {
     const savedUserId = localStorage.getItem('msh3_userId');
     const savedUserData = localStorage.getItem('msh3_userData');
+    const savedPage = localStorage.getItem('msh3_currentPage');
+    const savedSessionId = localStorage.getItem('msh3_sessionId');
     
     if (savedUserId && savedUserData) {
       try {
         const userData = JSON.parse(savedUserData);
         setCurrentUserId(savedUserId);
         setCurrentUser(userData);
-        console.log('Restored login from localStorage:', savedUserId);
+        
+        // Restore the page they were on
+        if (savedPage) {
+          setCurrentPage(savedPage);
+        }
+        
+        // Restore sessionId if they were in an assessment
+        if (savedSessionId && savedSessionId !== 'null') {
+          setSessionId(savedSessionId);
+        }
+        
+        console.log('Restored session from localStorage:', {
+          userId: savedUserId,
+          page: savedPage,
+          sessionId: savedSessionId
+        });
       } catch (error) {
-        console.error('Error restoring login state:', error);
+        console.error('Error restoring session state:', error);
+        // Clear corrupted data
         localStorage.removeItem('msh3_userId');
         localStorage.removeItem('msh3_userData');
+        localStorage.removeItem('msh3_currentPage');
+        localStorage.removeItem('msh3_sessionId');
       }
     }
     
@@ -46,6 +66,8 @@ function App() {
     // Save login state to localStorage
     localStorage.setItem('msh3_userId', userId);
     localStorage.setItem('msh3_userData', JSON.stringify(userData));
+    localStorage.setItem('msh3_currentPage', 'adhoc');
+    localStorage.removeItem('msh3_sessionId');
   };
 
   const handleLogout = () => {
@@ -55,22 +77,29 @@ function App() {
     setCurrentPage('adhoc');
     setSessionId(null);
     
-    // Clear login state from localStorage
+    // Clear ALL state from localStorage
     localStorage.removeItem('msh3_userId');
     localStorage.removeItem('msh3_userData');
+    localStorage.removeItem('msh3_currentPage');
+    localStorage.removeItem('msh3_sessionId');
   };
 
   const handleNavigate = (page, data = null) => {
     console.log('Navigate to:', page, 'with data:', data);
     setCurrentPage(page);
     
+    // Save current page to localStorage
+    localStorage.setItem('msh3_currentPage', page);
+    
     // Handle sessionId from data
     if (data && data.sessionId) {
       console.log('Setting sessionId:', data.sessionId);
       setSessionId(data.sessionId);
+      localStorage.setItem('msh3_sessionId', data.sessionId);
     } else if (page !== 'assess' && page !== 'assessment-entry' && page !== 'comparison') {
       // Clear sessionId when navigating away from assessment pages
       setSessionId(null);
+      localStorage.removeItem('msh3_sessionId');
     }
   };
 
