@@ -15,12 +15,15 @@ function App() {
   const [sessionId, setSessionId] = useState(null);
 
   const handleLogin = (userId, userData) => {
+    console.log('Login:', userId, userData);
     setCurrentUserId(userId);
     setCurrentUser(userData);
     setCurrentPage('adhoc');
+    setSessionId(null);
   };
 
   const handleLogout = () => {
+    console.log('Logout');
     setCurrentUserId(null);
     setCurrentUser(null);
     setCurrentPage('adhoc');
@@ -28,9 +31,16 @@ function App() {
   };
 
   const handleNavigate = (page, data = null) => {
+    console.log('Navigate to:', page, 'with data:', data);
     setCurrentPage(page);
+    
+    // Handle sessionId from data
     if (data && data.sessionId) {
+      console.log('Setting sessionId:', data.sessionId);
       setSessionId(data.sessionId);
+    } else if (page !== 'assess' && page !== 'comparison') {
+      // Clear sessionId when navigating away from assessment pages
+      setSessionId(null);
     }
   };
 
@@ -42,6 +52,9 @@ function App() {
       </div>
     );
   }
+
+  // Log current state for debugging
+  console.log('Current page:', currentPage, 'SessionData:', sessionId);
 
   // Show Ad Hoc Assessments page
   if (currentPage === 'adhoc') {
