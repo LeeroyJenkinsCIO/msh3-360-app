@@ -38,7 +38,7 @@ function App() {
     if (data && data.sessionId) {
       console.log('Setting sessionId:', data.sessionId);
       setSessionId(data.sessionId);
-    } else if (page !== 'assess' && page !== 'comparison') {
+    } else if (page !== 'assess' && page !== 'assessment-entry' && page !== 'comparison') {
       // Clear sessionId when navigating away from assessment pages
       setSessionId(null);
     }
@@ -70,8 +70,8 @@ function App() {
     );
   }
 
-  // Show Assessment Entry page
-  if (currentPage === 'assess' && sessionId) {
+  // Show Assessment Entry page (handles both 'assess' and 'assessment-entry')
+  if ((currentPage === 'assess' || currentPage === 'assessment-entry') && sessionId) {
     return (
       <div className="App">
         <AssessmentEntryPage 
