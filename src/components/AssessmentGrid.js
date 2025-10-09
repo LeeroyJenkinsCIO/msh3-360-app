@@ -1,12 +1,22 @@
 import React from 'react';
+import { Card, StatCard } from './ui';
 
-const AssessmentGrid = ({ scores, onSliderChange, titlePrefix = "My" }) => {
+function AssessmentGrid({ scores, onScoreChange }) {
   
   const calculateNineBoxPosition = (scores) => {
-    const totalContribution = scores.culture.contribution + scores.competencies.contribution + scores.execution.contribution;
-    const totalGrowth = scores.culture.growth + scores.competencies.growth + scores.execution.growth;
+    // Calculate total contribution (sum of all contribution scores)
+    const totalContribution = scores.culture.contribution + 
+                             scores.competencies.contribution + 
+                             scores.execution.contribution;
+    
+    // Calculate total growth (sum of all growth scores)
+    const totalGrowth = scores.culture.growth + 
+                       scores.competencies.growth + 
+                       scores.execution.growth;
+    
     const composite = totalContribution + totalGrowth;
 
+    // Determine contribution and growth levels
     let growthLevel, contribLevel;
     
     if (totalContribution <= 2) contribLevel = 'low';
@@ -17,6 +27,7 @@ const AssessmentGrid = ({ scores, onSliderChange, titlePrefix = "My" }) => {
     else if (totalGrowth <= 4) growthLevel = 'mid';
     else growthLevel = 'high';
 
+    // Map to nine-box positions
     if (composite >= 11 && growthLevel === 'high' && contribLevel === 'high') return 'Transformative Outcomes';
     
     if (growthLevel === 'high' && contribLevel === 'low') return 'Raw Talent';
@@ -34,311 +45,345 @@ const AssessmentGrid = ({ scores, onSliderChange, titlePrefix = "My" }) => {
     return 'Status Quo';
   };
 
-  const totalContribution = scores.culture.contribution + scores.competencies.contribution + scores.execution.contribution;
-  const totalGrowth = scores.culture.growth + scores.competencies.growth + scores.execution.growth;
-  const composite = totalContribution + totalGrowth;
-  const position = calculateNineBoxPosition(scores);
-
   const getPositionDescription = (position) => {
+    // Official MSH³ v2.5 Composite 9-Box Descriptions
     const descriptions = {
       'Critical Risk': {
         zone: 'Below Baseline (0-4): Coaching and Support Zone',
-        color: 'text-red-700',
+        scoreRange: '0-1',
+        color: '#dc2626',
         description: 'Immediate intervention required; both growth and contribution are below expectations.'
       },
       'Narrow Contributor': {
         zone: 'Below Baseline (0-4): Coaching and Support Zone',
-        color: 'text-red-700',
+        scoreRange: '2-4',
+        color: '#fca5a5',
         description: 'Performs reliably within a limited scope; limited adaptability outside familiar territory.'
       },
       'Inconsistent': {
         zone: 'Below Baseline (0-4): Coaching and Support Zone',
-        color: 'text-red-700',
+        scoreRange: '2-4',
+        color: '#fca5a5',
         description: 'Delivery fluctuates; needs structure, feedback, and stability to regain consistency.'
       },
       'Status Quo': {
         zone: 'Baseline (5-6): Reliable Performance Zone',
-        color: 'text-blue-700',
-        description: 'Dependable, steady performer maintaining contribution and growth expectations.'
+        scoreRange: '5-6',
+        color: '#a7c4a0',
+        description: 'Dependable, steady performer maintaining contribution and growth expectations; represents IS\'s baseline of reliability.'
       },
       'Raw Talent': {
         zone: 'Above Baseline (7-10): High-Performance Zone',
-        color: 'text-indigo-700',
+        scoreRange: '7-8',
+        color: '#06b6d4',
         description: 'Shows strong curiosity and growth potential; contribution improving but not yet consistent.'
       },
       'Untapped Potential': {
         zone: 'Above Baseline (7-10): High-Performance Zone',
-        color: 'text-indigo-700',
+        scoreRange: '7-8',
+        color: '#06b6d4',
         description: 'Strong contributor needing challenge or scope expansion to sustain growth and engagement.'
       },
       'High Impact': {
         zone: 'Above Baseline (7-10): High-Performance Zone',
-        color: 'text-indigo-700',
+        scoreRange: '9-10',
+        color: '#3b82f6',
         description: 'Trusted performer delivering consistent, measurable outcomes that elevate the team.'
       },
       'Developing Driver': {
         zone: 'Above Baseline (7-10): High-Performance Zone',
-        color: 'text-indigo-700',
+        scoreRange: '9-10',
+        color: '#3b82f6',
         description: 'Combines capability and initiative; drives improvement, collaboration, and influence across functions.'
       },
       'Transformative Outcomes': {
         zone: 'Exceptional (11-12): Transformational Zone',
-        color: 'text-yellow-700',
-        description: 'Sustained excellence across all domains; delivers enterprise-level impact and shapes the future.'
+        scoreRange: '11-12',
+        color: '#f59e0b',
+        description: 'Sustained excellence across all domains; delivers enterprise-level impact and shapes the future of IS.'
       }
     };
     return descriptions[position] || descriptions['Status Quo'];
   };
 
+  const totalContribution = scores.culture.contribution + 
+                           scores.competencies.contribution + 
+                           scores.execution.contribution;
+  
+  const totalGrowth = scores.culture.growth + 
+                     scores.competencies.growth + 
+                     scores.execution.growth;
+  
+  const composite = totalContribution + totalGrowth;
+  const position = calculateNineBoxPosition(scores);
   const positionInfo = getPositionDescription(position);
+
+  const nineBoxPositions = [
+    { name: 'Raw Talent', row: 2, col: 0, label: 'Raw\nTalent' },
+    { name: 'High Impact', row: 2, col: 1, label: 'High\nImpact' },
+    { name: 'Transformative Outcomes', row: 2, col: 2, label: 'Transformative\nOutcomes' },
+    { name: 'Narrow Contributor', row: 1, col: 0, label: 'Narrow\nContributor' },
+    { name: 'Status Quo', row: 1, col: 1, label: 'Status\nQuo' },
+    { name: 'Developing Driver', row: 1, col: 2, label: 'Developing\nDriver' },
+    { name: 'Critical Risk', row: 0, col: 0, label: 'Critical\nRisk' },
+    { name: 'Inconsistent', row: 0, col: 1, label: 'Inconsistent' },
+    { name: 'Untapped Potential', row: 0, col: 2, label: 'Untapped\nPotential' }
+  ];
+
+  const getScoreColor = (score) => {
+    if (score === 0) return 'text-red-600';
+    if (score === 1) return 'text-green-600';
+    return 'text-amber-500';
+  };
 
   return (
     <>
-      {/* Assessment Guide Header */}
-      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Assessment Guide</h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* BOX 1: Assessment Guide Header */}
+      <Card borderColor="neutral" className="mb-5">
+        <h3 className="text-base font-bold text-neutral-dark mb-3">
+          Assessment Guide
+        </h3>
+
+        <div className="grid grid-cols-3 gap-4 text-sm mb-3">
           <div>
-            <h4 className="font-bold text-blue-700 mb-2">Contribution (X-axis)</h4>
-            <p className="text-sm text-gray-700">The reliability, impact, and outcomes delivered today. It measures execution, accountability, and delivery strength.</p>
+            <h4 className="font-bold text-culture mb-1">Culture</h4>
+            <p className="text-neutral">How we show up and engage with others.</p>
           </div>
-          
           <div>
-            <h4 className="font-bold text-green-700 mb-2">Growth (Y-axis)</h4>
-            <p className="text-sm text-gray-700">The capacity and willingness to learn, adapt, and expand pace, scope, or responsibility. It reflects curiosity, trajectory, and readiness to take on more.</p>
+            <h4 className="font-bold text-competencies mb-1">Competencies</h4>
+            <p className="text-neutral">What we know and can do effectively.</p>
           </div>
-          
           <div>
-            <h4 className="font-bold text-gray-900 mb-2">Scoring Scale</h4>
-            <div className="text-sm text-gray-700 space-y-1">
-              <p><span className="font-semibold">0 - Low:</span> Below expectations</p>
-              <p><span className="font-semibold">1 - Meeting:</span> On track, reliable</p>
-              <p><span className="font-semibold">2 - Exceeding:</span> Above expectations</p>
-            </div>
+            <h4 className="font-bold text-execution mb-1">Execution</h4>
+            <p className="text-neutral">How we deliver results and drive impact.</p>
           </div>
         </div>
-      </div>
 
-      {/* 2x2 Grid Layout */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        {/* Culture */}
-        <div className="bg-white rounded-lg shadow-md border-l-4 border-purple-500 p-6">
-          <h3 className="text-xl font-bold text-gray-900 mb-3">Culture</h3>
-          <div className="bg-purple-50 border-l-2 border-purple-400 p-3 mb-5">
-            <p className="text-sm text-gray-700 font-medium">How we show up. Collaboration, communication, accountability, and alignment with values.</p>
-          </div>
+        <div className="bg-neutral-light rounded-lg p-3 text-xs text-neutral">
+          <strong>Scoring:</strong> 0 = Below Expectations | 1 = Meets Expectations | 2 = Exceeds Expectations
+          <br />
+          <span className="italic mt-1 block">
+            Challenge. Care. Trust.
+          </span>
+        </div>
+      </Card>
+
+      {/* BOXES 2-5: Pillars (Left) + Compass (Right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-5 mb-5">
+        
+        {/* LEFT COLUMN: MSH³ Domains Stacked */}
+        <div className="flex flex-col gap-5">
           
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-semibold mr-2">CONTRIBUTION</span>
-                {scores.culture.contribution}
-              </label>
+          {/* BOX 2: Culture Domain */}
+          <Card borderColor="culture">
+            <h3 className="text-base font-bold text-culture mb-3">Culture</h3>
+
+            <div className="mb-3">
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-xs font-medium text-neutral-dark">Contribution</label>
+                <span className={`text-sm font-bold ${getScoreColor(scores.culture.contribution)}`}>
+                  {scores.culture.contribution}
+                </span>
+              </div>
               <input
                 type="range"
                 min="0"
                 max="2"
                 value={scores.culture.contribution}
-                onChange={(e) => onSliderChange('culture', 'contribution', e.target.value)}
-                className="w-full h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer slider-thumb-blue"
+                onChange={(e) => onScoreChange('culture', 'contribution', e.target.value)}
+                className="w-full cursor-pointer"
               />
-              <div className="flex justify-between text-xs text-gray-500 mt-1">
-                <span>0 - Low</span>
-                <span>1 - Meeting</span>
-                <span>2 - Exceeding</span>
-              </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-semibold mr-2">GROWTH</span>
-                {scores.culture.growth}
-              </label>
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-xs font-medium text-neutral-dark">Growth</label>
+                <span className={`text-sm font-bold ${getScoreColor(scores.culture.growth)}`}>
+                  {scores.culture.growth}
+                </span>
+              </div>
               <input
                 type="range"
                 min="0"
                 max="2"
                 value={scores.culture.growth}
-                onChange={(e) => onSliderChange('culture', 'growth', e.target.value)}
-                className="w-full h-2 bg-green-200 rounded-lg appearance-none cursor-pointer slider-thumb-green"
+                onChange={(e) => onScoreChange('culture', 'growth', e.target.value)}
+                className="w-full cursor-pointer"
               />
-              <div className="flex justify-between text-xs text-gray-500 mt-1">
-                <span>0 - Limited</span>
-                <span>1 - Moderate</span>
-                <span>2 - High</span>
-              </div>
             </div>
-          </div>
-        </div>
+          </Card>
 
-        {/* Competencies */}
-        <div className="bg-white rounded-lg shadow-md border-l-4 border-orange-500 p-6">
-          <h3 className="text-xl font-bold text-gray-900 mb-3">Competencies</h3>
-          <div className="bg-orange-50 border-l-2 border-orange-400 p-3 mb-5">
-            <p className="text-sm text-gray-700 font-medium">What we know. The technical and functional skills that enable reliable, high-quality work.</p>
-          </div>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-semibold mr-2">CONTRIBUTION</span>
-                {scores.competencies.contribution}
-              </label>
+          {/* BOX 3: Competencies Domain */}
+          <Card borderColor="competencies">
+            <h3 className="text-base font-bold text-competencies mb-3">Competencies</h3>
+
+            <div className="mb-3">
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-xs font-medium text-neutral-dark">Contribution</label>
+                <span className={`text-sm font-bold ${getScoreColor(scores.competencies.contribution)}`}>
+                  {scores.competencies.contribution}
+                </span>
+              </div>
               <input
                 type="range"
                 min="0"
                 max="2"
                 value={scores.competencies.contribution}
-                onChange={(e) => onSliderChange('competencies', 'contribution', e.target.value)}
-                className="w-full h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer slider-thumb-blue"
+                onChange={(e) => onScoreChange('competencies', 'contribution', e.target.value)}
+                className="w-full cursor-pointer"
               />
-              <div className="flex justify-between text-xs text-gray-500 mt-1">
-                <span>0 - Low</span>
-                <span>1 - Meeting</span>
-                <span>2 - Exceeding</span>
-              </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-semibold mr-2">GROWTH</span>
-                {scores.competencies.growth}
-              </label>
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-xs font-medium text-neutral-dark">Growth</label>
+                <span className={`text-sm font-bold ${getScoreColor(scores.competencies.growth)}`}>
+                  {scores.competencies.growth}
+                </span>
+              </div>
               <input
                 type="range"
                 min="0"
                 max="2"
                 value={scores.competencies.growth}
-                onChange={(e) => onSliderChange('competencies', 'growth', e.target.value)}
-                className="w-full h-2 bg-green-200 rounded-lg appearance-none cursor-pointer slider-thumb-green"
+                onChange={(e) => onScoreChange('competencies', 'growth', e.target.value)}
+                className="w-full cursor-pointer"
               />
-              <div className="flex justify-between text-xs text-gray-500 mt-1">
-                <span>0 - Limited</span>
-                <span>1 - Moderate</span>
-                <span>2 - High</span>
-              </div>
             </div>
-          </div>
-        </div>
+          </Card>
 
-        {/* Execution */}
-        <div className="bg-white rounded-lg shadow-md border-l-4 border-blue-500 p-6">
-          <h3 className="text-xl font-bold text-gray-900 mb-3">Execution</h3>
-          <div className="bg-blue-50 border-l-2 border-blue-400 p-3 mb-5">
-            <p className="text-sm text-gray-700 font-medium">What we deliver. The ability to translate plans into results that move the business forward.</p>
-          </div>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-semibold mr-2">CONTRIBUTION</span>
-                {scores.execution.contribution}
-              </label>
+          {/* BOX 4: Execution Domain */}
+          <Card borderColor="execution">
+            <h3 className="text-base font-bold text-execution mb-3">Execution</h3>
+
+            <div className="mb-3">
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-xs font-medium text-neutral-dark">Contribution</label>
+                <span className={`text-sm font-bold ${getScoreColor(scores.execution.contribution)}`}>
+                  {scores.execution.contribution}
+                </span>
+              </div>
               <input
                 type="range"
                 min="0"
                 max="2"
                 value={scores.execution.contribution}
-                onChange={(e) => onSliderChange('execution', 'contribution', e.target.value)}
-                className="w-full h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer slider-thumb-blue"
+                onChange={(e) => onScoreChange('execution', 'contribution', e.target.value)}
+                className="w-full cursor-pointer"
               />
-              <div className="flex justify-between text-xs text-gray-500 mt-1">
-                <span>0 - Low</span>
-                <span>1 - Meeting</span>
-                <span>2 - Exceeding</span>
-              </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-semibold mr-2">GROWTH</span>
-                {scores.execution.growth}
-              </label>
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-xs font-medium text-neutral-dark">Growth</label>
+                <span className={`text-sm font-bold ${getScoreColor(scores.execution.growth)}`}>
+                  {scores.execution.growth}
+                </span>
+              </div>
               <input
                 type="range"
                 min="0"
                 max="2"
                 value={scores.execution.growth}
-                onChange={(e) => onSliderChange('execution', 'growth', e.target.value)}
-                className="w-full h-2 bg-green-200 rounded-lg appearance-none cursor-pointer slider-thumb-green"
+                onChange={(e) => onScoreChange('execution', 'growth', e.target.value)}
+                className="w-full cursor-pointer"
               />
-              <div className="flex justify-between text-xs text-gray-500 mt-1">
-                <span>0 - Limited</span>
-                <span>1 - Moderate</span>
-                <span>2 - High</span>
-              </div>
             </div>
-          </div>
+          </Card>
         </div>
 
-        {/* Nine-Box Position Preview */}
-        <div className="bg-white rounded-lg shadow-md border-l-4 border-indigo-500 p-6">
-          <h3 className="text-xl font-bold text-gray-900 mb-3">MSH³ Compass</h3>
-          
-          <div className="flex items-center">
-            <div className="text-xs text-gray-600 font-medium mr-2" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-              GROWTH
+        {/* RIGHT COLUMN: MSH³ Compass (Large) */}
+        <Card borderColor="msh-blue" className="flex flex-col">
+          <h3 className="text-lg font-bold text-neutral-dark mb-0">MSH³ Compass</h3>
+          <p className="text-sm text-neutral mb-5">Nine-Box Position</p>
+
+          {/* Large 9-Box Grid with Axis Labels */}
+          <div className="flex items-stretch gap-3 mb-3 flex-grow">
+            {/* Vertical Growth Label */}
+            <div className="flex items-center justify-center pr-2" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
+              <span className="text-xs text-neutral font-semibold">Growth</span>
             </div>
-            
-            <div className="flex-1">
-              <div className="grid grid-cols-3 gap-2 mb-2">
-                {/* Row 3 - High Growth */}
-                <div className={`p-3 rounded-lg border-2 text-center transition-all h-16 flex items-center justify-center ${position === 'Raw Talent' ? 'border-purple-600 bg-purple-400 shadow-2xl scale-110 font-bold' : 'border-gray-300 bg-purple-100 opacity-60'}`}>
-                  <div className={`text-xs ${position === 'Raw Talent' ? 'font-bold text-gray-900' : 'font-semibold text-gray-700'}`}>Raw Talent</div>
-                </div>
-                <div className={`p-3 rounded-lg border-2 text-center transition-all h-16 flex items-center justify-center ${position === 'High Impact' ? 'border-blue-600 bg-blue-500 shadow-2xl scale-110 font-bold' : 'border-gray-300 bg-blue-200 opacity-60'}`}>
-                  <div className={`text-xs ${position === 'High Impact' ? 'font-bold text-white' : 'font-semibold text-gray-700'}`}>High Impact</div>
-                </div>
-                <div className={`p-3 rounded-lg border-2 text-center transition-all h-16 flex items-center justify-center ${position === 'Transformative Outcomes' ? 'border-yellow-600 bg-yellow-400 shadow-2xl scale-110 font-bold' : 'border-gray-300 bg-yellow-200 opacity-60'}`}>
-                  <div className={`text-xs leading-tight ${position === 'Transformative Outcomes' ? 'font-bold text-gray-900' : 'font-semibold text-gray-700'}`}>Transformative Outcomes</div>
-                </div>
 
-                {/* Row 2 - Medium Growth */}
-                <div className={`p-3 rounded-lg border-2 text-center transition-all h-16 flex items-center justify-center ${position === 'Narrow Contributor' ? 'border-orange-600 bg-orange-400 shadow-2xl scale-110 font-bold' : 'border-gray-300 bg-orange-200 opacity-60'}`}>
-                  <div className={`text-xs leading-tight ${position === 'Narrow Contributor' ? 'font-bold text-gray-900' : 'font-semibold text-gray-700'}`}>Narrow Contributor</div>
-                </div>
-                <div className={`p-3 rounded-lg border-2 text-center transition-all h-16 flex items-center justify-center ${position === 'Status Quo' ? 'border-blue-600 bg-blue-500 shadow-2xl scale-110 font-bold' : 'border-gray-300 bg-blue-200 opacity-60'}`}>
-                  <div className={`text-xs ${position === 'Status Quo' ? 'font-bold text-white' : 'font-semibold text-gray-700'}`}>Status Quo</div>
-                </div>
-                <div className={`p-3 rounded-lg border-2 text-center transition-all h-16 flex items-center justify-center ${position === 'Developing Driver' ? 'border-blue-600 bg-blue-500 shadow-2xl scale-110 font-bold' : 'border-gray-300 bg-blue-200 opacity-60'}`}>
-                  <div className={`text-xs leading-tight ${position === 'Developing Driver' ? 'font-bold text-white' : 'font-semibold text-gray-700'}`}>Developing Driver</div>
-                </div>
-
-                {/* Row 1 - Low Growth */}
-                <div className={`p-3 rounded-lg border-2 text-center transition-all h-16 flex items-center justify-center ${position === 'Critical Risk' ? 'border-red-600 bg-red-400 shadow-2xl scale-110 font-bold' : 'border-gray-300 bg-red-200 opacity-60'}`}>
-                  <div className={`text-xs ${position === 'Critical Risk' ? 'font-bold text-gray-900' : 'font-semibold text-gray-700'}`}>Critical Risk</div>
-                </div>
-                <div className={`p-3 rounded-lg border-2 text-center transition-all h-16 flex items-center justify-center ${position === 'Inconsistent' ? 'border-orange-600 bg-orange-400 shadow-2xl scale-110 font-bold' : 'border-gray-300 bg-orange-200 opacity-60'}`}>
-                  <div className={`text-xs ${position === 'Inconsistent' ? 'font-bold text-gray-900' : 'font-semibold text-gray-700'}`}>Inconsistent</div>
-                </div>
-                <div className={`p-3 rounded-lg border-2 text-center transition-all h-16 flex items-center justify-center ${position === 'Untapped Potential' ? 'border-purple-600 bg-purple-400 shadow-2xl scale-110 font-bold' : 'border-gray-300 bg-purple-100 opacity-60'}`}>
-                  <div className={`text-xs leading-tight ${position === 'Untapped Potential' ? 'font-bold text-gray-900' : 'font-semibold text-gray-700'}`}>Untapped Potential</div>
-                </div>
-              </div>
-              
-              <div className="text-xs text-gray-600 font-medium text-center">CONTRIBUTION</div>
+            {/* The 9-box grid */}
+            <div className="grid grid-cols-3 gap-2 flex-1">
+              {nineBoxPositions.map((box) => {
+                const isActive = box.name === position;
+                const boxInfo = getPositionDescription(box.name);
+                const boxColor = boxInfo.color;
+                
+                const needsDarkText = ['#fca5a5', '#a7c4a0', '#06b6d4'].includes(boxColor);
+                const textColorClass = isActive 
+                  ? (needsDarkText ? 'text-neutral-dark' : 'text-white') 
+                  : 'text-neutral';
+                
+                return (
+                  <div
+                    key={box.name}
+                    className={`rounded-lg flex items-center justify-center text-xs font-medium p-3 text-center leading-tight transition-all min-h-[80px] whitespace-pre-line ${textColorClass} ${
+                      isActive ? 'font-bold border-4' : 'bg-neutral-light border-2 border-neutral-medium'
+                    }`}
+                    style={isActive ? { 
+                      backgroundColor: boxColor,
+                      borderColor: boxColor
+                    } : {}}
+                  >
+                    {box.label}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          <div className="text-center mt-3">
-            <p className="text-lg font-bold text-gray-900">{position}</p>
-            <p className="text-xs text-gray-500">Composite: {composite}</p>
+          {/* Horizontal Contribution Label */}
+          <div className="text-center text-xs text-neutral font-semibold mb-5 ml-11">
+            Contribution
           </div>
+
+          {/* Position Info - Shows specific zone for each position */}
+          <div className="bg-neutral-light rounded-lg p-4 text-center">
+            <div className="text-xl font-bold mb-1" style={{ color: positionInfo.color }}>
+              {position}
+            </div>
+            <div className="text-xs text-neutral mb-2 uppercase tracking-wider font-semibold">
+              {positionInfo.zone}
+            </div>
+            <div className="text-xs text-neutral-dark leading-relaxed">
+              {positionInfo.description}
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* BOX 6: Summary */}
+      <Card borderColor="neutral">
+        <h3 className="text-base font-bold text-neutral-dark mb-4">Summary</h3>
+
+        <div className="grid grid-cols-3 gap-4">
+          <StatCard
+            label="Contribution"
+            value={totalContribution}
+            subtext="of 6"
+            borderColor="msh-indigo"
+          />
+
+          <StatCard
+            label="Growth"
+            value={totalGrowth}
+            subtext="of 6"
+            borderColor="msh-purple"
+          />
+
+          <StatCard
+            label="Composite"
+            value={composite}
+            subtext="of 12"
+            borderColor="custom"
+            customColor={positionInfo.color}
+          />
         </div>
-      </div>
-
-      {/* Summary Footer */}
-      <div className="bg-white border-2 border-gray-300 rounded-lg p-4 mb-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">{titlePrefix} Assessment Summary</h3>
-        <p className="text-sm text-gray-600">
-          Total Contribution: {totalContribution} | 
-          Total Growth: {totalGrowth} | 
-          Composite Score: {composite}
-        </p>
-      </div>
+      </Card>
     </>
   );
-};
+}
 
 export default AssessmentGrid;

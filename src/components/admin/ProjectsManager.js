@@ -25,7 +25,6 @@ const ProjectsManager = ({ currentUser }) => {
       projectsSnapshot.forEach(doc => {
         projectsData.push({ id: doc.id, ...doc.data() });
       });
-      // Sort by creation date, newest first
       projectsData.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       setProjects(projectsData);
       setLoading(false);
@@ -70,23 +69,21 @@ const ProjectsManager = ({ currentUser }) => {
 
     try {
       if (editingProject) {
-        // Update existing project
         await updateDoc(doc(db, 'assessmentProjects', editingProject.id), {
           name: formData.name.trim(),
           description: formData.description.trim(),
           status: formData.status,
           updatedAt: new Date().toISOString(),
-          updatedBy: currentUser.id
+          updatedBy: currentUser?.id || 'unknown'
         });
       } else {
-        // Create new project
         await addDoc(collection(db, 'assessmentProjects'), {
           name: formData.name.trim(),
           description: formData.description.trim(),
           status: formData.status,
           createdAt: new Date().toISOString(),
-          createdBy: currentUser.id,
-          createdByName: currentUser.displayName
+          createdBy: currentUser?.id || 'unknown',
+          createdByName: currentUser?.displayName || currentUser?.name || 'Unknown'
         });
       }
       
@@ -104,7 +101,7 @@ const ProjectsManager = ({ currentUser }) => {
       await updateDoc(doc(db, 'assessmentProjects', projectId), {
         status: newStatus,
         updatedAt: new Date().toISOString(),
-        updatedBy: currentUser.id
+        updatedBy: currentUser?.id || 'unknown'
       });
       loadProjects();
     } catch (error) {
@@ -132,15 +129,15 @@ const ProjectsManager = ({ currentUser }) => {
   }
 
   return (
-    <div>
+    <div className="p-6">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h3 className="text-lg font-semibold text-gray-900">Assessment Projects</h3>
-          <p className="text-sm text-gray-600">Create and manage projects for ad hoc 360° assessments</p>
+          <p className="text-sm text-gray-600">Create and manage projects for 360° assessments</p>
         </div>
         <button
           onClick={() => handleOpenModal()}
-          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           <Plus className="w-5 h-5 mr-2" />
           New Project
@@ -148,7 +145,7 @@ const ProjectsManager = ({ currentUser }) => {
       </div>
 
       {projects.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+        <div className="text-center py-12 bg-white rounded-lg shadow-md border border-gray-200">
           <FolderKanban className="w-12 h-12 text-gray-400 mx-auto mb-4" />
           <p className="text-gray-600 mb-4">No assessment projects yet</p>
           <button
@@ -163,8 +160,8 @@ const ProjectsManager = ({ currentUser }) => {
           {projects.map(project => (
             <div
               key={project.id}
-              className={`border rounded-lg p-4 ${
-                project.status === 'archived' ? 'bg-gray-50 border-gray-300' : 'bg-white border-gray-200'
+              className={`bg-white rounded-lg shadow-md p-4 border ${
+                project.status === 'archived' ? 'border-gray-300' : 'border-gray-200'
               }`}
             >
               <div className="flex items-start justify-between">
@@ -220,15 +217,17 @@ const ProjectsManager = ({ currentUser }) => {
       {/* Create/Edit Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-xl font-semibold mb-4">
-              {editingProject ? 'Edit Project' : 'Create New Project'}
-            </h3>
-            <form onSubmit={handleSubmit}>
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="bg-blue-600 text-white p-6 rounded-t-lg">
+              <h3 className="text-xl font-semibold">
+                {editingProject ? 'Edit Project' : 'Create New Project'}
+              </h3>
+            </div>
+            <div className="p-6">
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Project Name *
+                    Project Name <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -274,13 +273,13 @@ const ProjectsManager = ({ currentUser }) => {
                   Cancel
                 </button>
                 <button
-                  type="submit"
+                  onClick={handleSubmit}
                   className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
                   {editingProject ? 'Update' : 'Create'}
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}

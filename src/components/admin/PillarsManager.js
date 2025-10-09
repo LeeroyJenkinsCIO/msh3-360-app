@@ -81,11 +81,11 @@ const PillarsManager = () => {
   };
 
   return (
-    <div>
+    <div className="p-6">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h3 className="text-lg font-semibold text-gray-900">Manage Assessment Pillars</h3>
-          <p className="text-sm text-gray-600 mt-1">Configure the domains/pillars used in assessments</p>
+          <p className="text-sm text-gray-600">Configure the domains/pillars used in assessments</p>
         </div>
         <button
           onClick={() => setIsAdding(true)}
@@ -98,7 +98,7 @@ const PillarsManager = () => {
 
       {/* Add New Pillar Form */}
       {isAdding && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+        <div className="bg-white rounded-lg shadow-md p-4 mb-4 border border-blue-200">
           <h4 className="font-semibold text-gray-900 mb-3">Add New Pillar</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -107,7 +107,7 @@ const PillarsManager = () => {
                 type="text"
                 value={newPillar.name}
                 onChange={(e) => setNewPillar({ ...newPillar, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 placeholder="Culture"
               />
             </div>
@@ -117,7 +117,7 @@ const PillarsManager = () => {
                 type="text"
                 value={newPillar.key}
                 onChange={(e) => setNewPillar({ ...newPillar, key: e.target.value.toLowerCase() })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 placeholder="culture"
               />
             </div>
@@ -127,7 +127,7 @@ const PillarsManager = () => {
                 type="text"
                 value={newPillar.description}
                 onChange={(e) => setNewPillar({ ...newPillar, description: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 placeholder="How we show up"
               />
             </div>
@@ -137,17 +137,17 @@ const PillarsManager = () => {
                 type="text"
                 value={newPillar.icon}
                 onChange={(e) => setNewPillar({ ...newPillar, icon: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 placeholder="🎭"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Color (Tailwind class)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Color</label>
               <input
                 type="text"
                 value={newPillar.color}
                 onChange={(e) => setNewPillar({ ...newPillar, color: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 placeholder="purple"
               />
             </div>
@@ -175,16 +175,16 @@ const PillarsManager = () => {
       )}
 
       {/* Pillars Table */}
-      <div className="overflow-x-auto">
+      <div className="bg-white rounded-lg shadow-md overflow-hidden">
         <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-200">
-              <th className="text-left py-3 px-4 font-semibold text-gray-700">Name</th>
-              <th className="text-left py-3 px-4 font-semibold text-gray-700">Key</th>
-              <th className="text-left py-3 px-4 font-semibold text-gray-700">Description</th>
-              <th className="text-left py-3 px-4 font-semibold text-gray-700">Icon</th>
-              <th className="text-left py-3 px-4 font-semibold text-gray-700">Color</th>
-              <th className="text-right py-3 px-4 font-semibold text-gray-700">Actions</th>
+          <thead className="bg-gray-800 text-white">
+            <tr>
+              <th className="text-left py-3 px-4 font-semibold">Name</th>
+              <th className="text-left py-3 px-4 font-semibold">Key</th>
+              <th className="text-left py-3 px-4 font-semibold">Description</th>
+              <th className="text-left py-3 px-4 font-semibold">Icon</th>
+              <th className="text-left py-3 px-4 font-semibold">Color</th>
+              <th className="text-right py-3 px-4 font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody>

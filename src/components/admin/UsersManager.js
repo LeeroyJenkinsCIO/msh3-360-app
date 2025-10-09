@@ -101,7 +101,6 @@ const UsersManager = () => {
   };
 
   const handleSaveUser = async () => {
-    // Validation
     if (!formData.displayName.trim()) {
       alert('Display Name is required');
       return;
@@ -123,27 +122,22 @@ const UsersManager = () => {
       };
 
       if (editingUser) {
-        // Update existing user
         await updateDoc(doc(db, 'users', editingUser.id), userData);
         alert('User updated successfully!');
       } else {
-        // Create new user
-        // Generate userId from email (remove @ and . for Firebase compatibility)
         const userId = formData.email.split('@')[0].replace(/\./g, '_').toLowerCase();
         
         userData.createdAt = new Date().toISOString();
         
-        // Check if userId already exists
         const existingUser = users.find(u => u.id === userId);
         if (existingUser) {
           alert('A user with this email already exists');
           return;
         }
 
-        // Use setDoc to create with specific ID
         await setDoc(doc(db, 'users', userId), userData);
         
-        alert('User created successfully! Note: User will need to set up their Firebase authentication separately.');
+        alert('User created successfully!');
       }
 
       handleCloseModal();
@@ -186,15 +180,15 @@ const UsersManager = () => {
   };
 
   const getRoleBadgeColor = (role) => {
-    if (role === 'Admin') return 'bg-purple-100 text-purple-800 border-purple-300';
-    if (role?.startsWith('ISL')) return 'bg-orange-100 text-orange-800 border-orange-300';
-    return 'bg-green-100 text-green-800 border-green-300';
+    if (role === 'Admin') return 'bg-purple-100 text-purple-800';
+    if (role?.startsWith('ISL')) return 'bg-orange-100 text-orange-800';
+    return 'bg-green-100 text-green-800';
   };
 
   const getStatusBadgeColor = (status) => {
     return status === 'active' 
-      ? 'bg-green-100 text-green-800 border-green-300'
-      : 'bg-gray-100 text-gray-800 border-gray-300';
+      ? 'bg-green-100 text-green-800'
+      : 'bg-gray-100 text-gray-800';
   };
 
   if (loading) {
@@ -206,8 +200,8 @@ const UsersManager = () => {
   }
 
   return (
-    <div>
-      {/* Header with Stats */}
+    <div className="p-6">
+      {/* Header */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -223,26 +217,26 @@ const UsersManager = () => {
           </button>
         </div>
 
-        {/* Stats */}
+        {/* Stats - Match Dashboard style */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
-            <div className="text-sm text-blue-700 font-medium mb-1">Total Users</div>
-            <div className="text-2xl font-bold text-blue-900">{users.length}</div>
+          <div className="bg-white rounded-lg shadow-md p-4 border-t-4 border-blue-500">
+            <div className="text-sm text-gray-600 mb-1">Total Users</div>
+            <div className="text-2xl font-bold text-gray-900">{users.length}</div>
           </div>
-          <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200">
-            <div className="text-sm text-orange-700 font-medium mb-1">ISL Active</div>
-            <div className="text-2xl font-bold text-orange-900">
+          <div className="bg-white rounded-lg shadow-md p-4 border-t-4 border-orange-500">
+            <div className="text-sm text-gray-600 mb-1">ISL Active</div>
+            <div className="text-2xl font-bold text-gray-900">
               {users.filter(u => u.role?.startsWith('ISL') && u.status === 'active').length}
             </div>
           </div>
-          <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200">
-            <div className="text-sm text-green-700 font-medium mb-1">ISF Active</div>
-            <div className="text-2xl font-bold text-green-900">
+          <div className="bg-white rounded-lg shadow-md p-4 border-t-4 border-green-500">
+            <div className="text-sm text-gray-600 mb-1">ISF Active</div>
+            <div className="text-2xl font-bold text-gray-900">
               {users.filter(u => u.role?.startsWith('ISF') && u.status === 'active').length}
             </div>
           </div>
-          <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-4 border border-gray-200">
-            <div className="text-sm text-gray-700 font-medium mb-1">Inactive</div>
+          <div className="bg-white rounded-lg shadow-md p-4 border-t-4 border-gray-500">
+            <div className="text-sm text-gray-600 mb-1">Inactive</div>
             <div className="text-2xl font-bold text-gray-900">
               {users.filter(u => u.status === 'inactive').length}
             </div>
@@ -251,18 +245,18 @@ const UsersManager = () => {
       </div>
 
       {/* Users Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-lg shadow-md overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-gray-800 text-white">
               <tr>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Name</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Email</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Role</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Pillar</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Reports To</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Actions</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold">Name</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold">Email</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold">Role</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold">Pillar</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold">Reports To</th>
+                <th className="px-4 py-3 text-left text-sm font-semibold">Status</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -287,7 +281,7 @@ const UsersManager = () => {
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{user.email}</td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getRoleBadgeColor(user.role)}`}>
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeColor(user.role)}`}>
                           {user.role}
                         </span>
                       </td>
@@ -298,7 +292,7 @@ const UsersManager = () => {
                       <td className="px-4 py-3">
                         <button
                           onClick={() => toggleStatus(user)}
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border cursor-pointer hover:opacity-80 transition-opacity ${getStatusBadgeColor(user.status)}`}
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 transition-opacity ${getStatusBadgeColor(user.status)}`}
                           title="Click to toggle status"
                         >
                           {user.status === 'active' ? 'Active' : 'Inactive'}
@@ -331,19 +325,19 @@ const UsersManager = () => {
         </div>
       </div>
 
-      {/* Add/Edit Modal */}
+      {/* Add/Edit Modal - Simplified */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-6 rounded-t-lg">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            {/* Modal Header - Simple */}
+            <div className="bg-blue-600 text-white p-6 rounded-t-lg">
               <div className="flex items-center justify-between">
                 <h3 className="text-xl font-bold">
                   {editingUser ? 'Edit User' : 'Add New User'}
                 </h3>
                 <button
                   onClick={handleCloseModal}
-                  className="p-2 hover:bg-white hover:bg-opacity-20 rounded transition-colors"
+                  className="p-2 hover:bg-blue-700 rounded transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -352,7 +346,6 @@ const UsersManager = () => {
 
             {/* Modal Body */}
             <div className="p-6 space-y-4">
-              {/* Display Name */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Display Name <span className="text-red-500">*</span>
@@ -366,7 +359,6 @@ const UsersManager = () => {
                 />
               </div>
 
-              {/* Email */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Email <span className="text-red-500">*</span>
@@ -377,14 +369,13 @@ const UsersManager = () => {
                   onChange={(e) => handleFormChange('email', e.target.value)}
                   placeholder="e.g., robert.johnson@company.com"
                   disabled={editingUser !== null}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
                 />
                 {editingUser && (
-                  <p className="text-xs text-gray-500 mt-1">Email cannot be changed after user creation</p>
+                  <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
                 )}
               </div>
 
-              {/* Role */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Role <span className="text-red-500">*</span>
@@ -392,7 +383,7 @@ const UsersManager = () => {
                 <select
                   value={formData.role}
                   onChange={(e) => handleFormChange('role', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   {ROLES.map(role => (
                     <option key={role} value={role}>{role}</option>
@@ -400,7 +391,6 @@ const UsersManager = () => {
                 </select>
               </div>
 
-              {/* Pillar */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Pillar <span className="text-red-500">*</span>
@@ -408,7 +398,7 @@ const UsersManager = () => {
                 <select
                   value={formData.pillar}
                   onChange={(e) => handleFormChange('pillar', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   {PILLARS.map(pillar => (
                     <option key={pillar} value={pillar}>{pillar}</option>
@@ -416,19 +406,18 @@ const UsersManager = () => {
                 </select>
               </div>
 
-              {/* Reports To */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Reports To <span className="text-red-500">*</span>
+                  Reports To
                 </label>
                 <select
                   value={formData.reportsTo}
                   onChange={(e) => handleFormChange('reportsTo', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">-- Select Manager --</option>
                   {users
-                    .filter(u => u.id !== editingUser?.id) // Don't show self
+                    .filter(u => u.id !== editingUser?.id)
                     .map(user => (
                       <option key={user.id} value={user.id}>
                         {user.displayName} ({user.role})
@@ -437,7 +426,6 @@ const UsersManager = () => {
                 </select>
               </div>
 
-              {/* Status */}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Status <span className="text-red-500">*</span>
@@ -445,7 +433,7 @@ const UsersManager = () => {
                 <select
                   value={formData.status}
                   onChange={(e) => handleFormChange('status', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
@@ -463,7 +451,7 @@ const UsersManager = () => {
               </button>
               <button
                 onClick={handleSaveUser}
-                className="px-6 py-2 bg-gradient-to-r from-blue-600 to-indigo-700 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-indigo-800 transition-colors flex items-center gap-2"
+                className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
               >
                 <Save className="w-4 h-4" />
                 {editingUser ? 'Update User' : 'Create User'}

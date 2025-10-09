@@ -1,90 +1,118 @@
 import React from 'react';
-import { Route, LogOut } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import Logo from './Logo';
+import { PERMISSIONS } from '../utils/permissions';
 
-const Header = ({ currentUser, activePage, onNavigate, onLogout }) => {
+export default function Header() {
+  const { user, permissions, logout } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
+
+  const isActive = (path) => {
+    return location.pathname === path;
+  };
+
+  // Get role badge color - matches login button colors
+  const getRoleBadgeColor = () => {
+    const role = user?.role?.toLowerCase();
+    switch (role) {
+      case 'admin':
+        return 'bg-red-500 text-white'; // Red like Admin Login
+      case 'ise':
+        return 'bg-blue-500 text-white'; // Blue like ISE Login
+      case 'isl':
+        return 'bg-orange-500 text-white'; // Orange like ISL Login
+      case 'isf':
+        return 'bg-green-500 text-white'; // Green like ISF Login
+      case 'projectlead':
+        return 'bg-yellow-500 text-white'; // Yellow/Orange like Project Lead Login
+      default:
+        return 'bg-gray-500 text-white';
+    }
+  };
+
+  // Navigation items based on permissions
+  const getNavItems = () => {
+    const items = [
+      { path: '/dashboard', label: 'Dashboard', show: true },
+      { path: '/assessment', label: 'Quick Align', show: true },
+      { path: '/assessment-history', label: 'History', show: true },
+      { 
+        path: '/projects', 
+        label: 'Projects', 
+        show: permissions?.[PERMISSIONS.VIEW_PROJECT_ASSESSMENTS]
+      },
+      { path: '/is-os', label: 'IS-OS', show: true },
+      { 
+        path: '/admin', 
+        label: 'Admin', 
+        show: permissions?.[PERMISSIONS.ACCESS_ADMIN_PANEL]
+      },
+    ];
+
+    return items.filter(item => item.show);
+  };
+
+  const navItems = getNavItems();
+
   return (
-    <div className="bg-white border-b-2 border-gray-200 shadow-sm">
-      <div className="max-w-7xl mx-auto px-4">
-        {/* Top Bar */}
-        <div className="flex items-center justify-between py-4">
-          {/* Logo and Title */}
-          <div className="flex items-center gap-3">
-            <Route className="w-8 h-8 text-blue-600" />
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">MSH³ 360</h1>
-              <p className="text-xs text-gray-600">Mindset | Skillset | Habits</p>
-            </div>
-          </div>
+    <header className="bg-white shadow-sm border-b border-gray-200">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center py-4">
+          {/* Logo */}
+          <Link to="/dashboard" className="flex items-center flex-shrink-0">
+            <Logo size="small" />
+          </Link>
 
-          {/* User Profile and Logout */}
-          {currentUser && (
-            <div className="flex items-center gap-4">
-              <div className="text-right">
-                <div className="text-sm font-semibold text-gray-900">{currentUser.displayName}</div>
-                <div className="text-xs text-gray-600">{currentUser.title || 'Team Member'}</div>
-              </div>
-              <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">
-                {currentUser.displayName?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'}
-              </div>
-              <button
-                onClick={onLogout}
-                className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                title="Logout"
+          {/* Navigation */}
+          <nav className="flex items-center gap-2 flex-grow justify-center">
+            {navItems.map((item) => (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  isActive(item.path)
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
+                }`}
               >
-                <LogOut className="w-5 h-5" />
-              </button>
-            </div>
-          )}
-        </div>
+                {item.label}
+              </Link>
+            ))}
+          </nav>
 
-        {/* Navigation Tabs */}
-        {currentUser && (
-          <div className="flex gap-2 -mb-0.5">
+          {/* User Info & Actions */}
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {/* Role Badge */}
+            <div className={`px-3 py-1.5 rounded-full text-xs font-bold ${getRoleBadgeColor()}`}>
+              {user?.role?.toUpperCase()}
+            </div>
+            
+            {/* User Name */}
+            <div className="text-sm font-medium text-gray-700">
+              {user?.name || user?.displayName || user?.email}
+            </div>
+            
+            {/* Logout Button */}
             <button
-              onClick={() => onNavigate('adhoc')}
-              className={`px-4 py-3 text-sm font-medium transition-colors ${
-                activePage === 'adhoc'
-                  ? 'text-white bg-blue-600 rounded-t-lg'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-t-lg'
-              }`}
+              onClick={handleLogout}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors shadow-sm"
             >
-              Ad Hoc Assessments
-            </button>
-            <button
-              onClick={() => onNavigate('history')}
-              className={`px-4 py-3 text-sm font-medium transition-colors ${
-                activePage === 'history'
-                  ? 'text-white bg-blue-600 rounded-t-lg'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-t-lg'
-              }`}
-            >
-              Assessment History
-            </button>
-            <button
-              onClick={() => onNavigate('projects')}
-              className={`px-4 py-3 text-sm font-medium transition-colors ${
-                activePage === 'projects'
-                  ? 'text-white bg-blue-600 rounded-t-lg'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-t-lg'
-              }`}
-            >
-              Projects
-            </button>
-            <button
-              onClick={() => onNavigate('admin')}
-              className={`px-4 py-3 text-sm font-medium transition-colors ${
-                activePage === 'admin'
-                  ? 'text-white bg-blue-600 rounded-t-lg'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-t-lg'
-              }`}
-            >
-              Admin
+              Logout
             </button>
           </div>
-        )}
+        </div>
       </div>
-    </div>
+    </header>
   );
-};
-
-export default Header;
+}

@@ -1,234 +1,94 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
+import UnderConstruction from './components/UnderConstruction';
+
+// Pages
 import LoginPage from './pages/LoginPage';
-import AdHocAssessmentsPage from './pages/AdHocAssessmentsPage';
-import AssessmentEntryPage from './pages/AssessmentEntryPage';
-import AssessmentComparisonPage from './pages/AssessmentComparisonPage';
+import Dashboard from './pages/Dashboard';
+import UnifiedAssessmentPage from './pages/UnifiedAssessmentPage';
 import AssessmentHistoryPage from './pages/AssessmentHistoryPage';
 import ProjectsDashboardPage from './pages/ProjectsDashboardPage';
+import ISOSHub from './pages/is-os/ISOSHub';
+import OneOnOneNew from './pages/is-os/OneOnOneNew';
+import AssessmentHistory from './pages/is-os/AssessmentHistory';
 import AdminPage from './pages/AdminPage';
-import './App.css';
+
+// Layout
+import MainLayout from './components/MainLayout';
 
 function App() {
-  const [currentUserId, setCurrentUserId] = useState(null);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [currentPage, setCurrentPage] = useState('adhoc');
-  const [sessionId, setSessionId] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Restore login state AND current page from localStorage on app load
-  useEffect(() => {
-    const savedUserId = localStorage.getItem('msh3_userId');
-    const savedUserData = localStorage.getItem('msh3_userData');
-    const savedPage = localStorage.getItem('msh3_currentPage');
-    const savedSessionId = localStorage.getItem('msh3_sessionId');
-    
-    if (savedUserId && savedUserData) {
-      try {
-        const userData = JSON.parse(savedUserData);
-        setCurrentUserId(savedUserId);
-        setCurrentUser(userData);
-        
-        // Restore the page they were on
-        if (savedPage) {
-          setCurrentPage(savedPage);
-        }
-        
-        // Restore sessionId if they were in an assessment
-        if (savedSessionId && savedSessionId !== 'null') {
-          setSessionId(savedSessionId);
-        }
-        
-        console.log('Restored session from localStorage:', {
-          userId: savedUserId,
-          page: savedPage,
-          sessionId: savedSessionId
-        });
-      } catch (error) {
-        console.error('Error restoring session state:', error);
-        // Clear corrupted data
-        localStorage.removeItem('msh3_userId');
-        localStorage.removeItem('msh3_userData');
-        localStorage.removeItem('msh3_currentPage');
-        localStorage.removeItem('msh3_sessionId');
-      }
-    }
-    
-    setIsLoading(false);
-  }, []);
-
-  const handleLogin = (userId, userData) => {
-    console.log('Login:', userId, userData);
-    setCurrentUserId(userId);
-    setCurrentUser(userData);
-    setCurrentPage('adhoc');
-    setSessionId(null);
-    
-    // Save login state to localStorage
-    localStorage.setItem('msh3_userId', userId);
-    localStorage.setItem('msh3_userData', JSON.stringify(userData));
-    localStorage.setItem('msh3_currentPage', 'adhoc');
-    localStorage.removeItem('msh3_sessionId');
-  };
-
-  const handleLogout = () => {
-    console.log('Logout');
-    setCurrentUserId(null);
-    setCurrentUser(null);
-    setCurrentPage('adhoc');
-    setSessionId(null);
-    
-    // Clear ALL state from localStorage
-    localStorage.removeItem('msh3_userId');
-    localStorage.removeItem('msh3_userData');
-    localStorage.removeItem('msh3_currentPage');
-    localStorage.removeItem('msh3_sessionId');
-  };
-
-  const handleNavigate = (page, data = null) => {
-    console.log('Navigate to:', page, 'with data:', data);
-    setCurrentPage(page);
-    
-    // Save current page to localStorage
-    localStorage.setItem('msh3_currentPage', page);
-    
-    // Handle sessionId from data
-    if (data && data.sessionId) {
-      console.log('Setting sessionId:', data.sessionId);
-      setSessionId(data.sessionId);
-      localStorage.setItem('msh3_sessionId', data.sessionId);
-    } else if (page !== 'assess' && page !== 'assessment-entry' && page !== 'comparison') {
-      // Clear sessionId when navigating away from assessment pages
-      setSessionId(null);
-      localStorage.removeItem('msh3_sessionId');
-    }
-  };
-
-  // Show loading state while checking localStorage
-  if (isLoading) {
-    return (
-      <div className="App" style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        minHeight: '100vh',
-        backgroundColor: '#f9fafb'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '24px', color: '#3b82f6', marginBottom: '16px' }}>MSH³ 360</div>
-          <div style={{ color: '#6b7280' }}>Loading...</div>
-        </div>
-      </div>
-    );
+  // Check environment variable - defaults to false for local development
+  // Set REACT_APP_UNDER_CONSTRUCTION=true in Vercel to show maintenance page
+  const showUnderConstruction = process.env.REACT_APP_UNDER_CONSTRUCTION === 'true';
+  
+  // Show under construction page if environment variable is set
+  if (showUnderConstruction) {
+    return <UnderConstruction />;
   }
 
-  // Show login page if no user is logged in
-  if (!currentUserId) {
-    return (
-      <div className="App">
-        <LoginPage onLogin={handleLogin} />
-      </div>
-    );
-  }
-
-  // Log current state for debugging
-  console.log('Current page:', currentPage, 'SessionData:', sessionId);
-
-  // Show Ad Hoc Assessments page
-  if (currentPage === 'adhoc') {
-    return (
-      <div className="App">
-        <AdHocAssessmentsPage 
-          currentUserId={currentUserId}
-          currentUser={currentUser}
-          onNavigate={handleNavigate}
-          onLogout={handleLogout}
-        />
-      </div>
-    );
-  }
-
-  // Show Assessment Entry page (handles both 'assess' and 'assessment-entry')
-  if ((currentPage === 'assess' || currentPage === 'assessment-entry') && sessionId) {
-    return (
-      <div className="App">
-        <AssessmentEntryPage 
-          sessionId={sessionId}
-          currentUserId={currentUserId}
-          currentUser={currentUser}
-          onNavigate={handleNavigate}
-          onLogout={handleLogout}
-        />
-      </div>
-    );
-  }
-
-  // Show Assessment Comparison page
-  if (currentPage === 'comparison' && sessionId) {
-    return (
-      <div className="App">
-        <AssessmentComparisonPage 
-          sessionId={sessionId}
-          currentUserId={currentUserId}
-          currentUser={currentUser}
-          onNavigate={handleNavigate}
-          onLogout={handleLogout}
-        />
-      </div>
-    );
-  }
-
-  // Show Assessment History page
-  if (currentPage === 'history') {
-    return (
-      <div className="App">
-        <AssessmentHistoryPage 
-          currentUserId={currentUserId}
-          currentUser={currentUser}
-          onNavigate={handleNavigate}
-          onLogout={handleLogout}
-        />
-      </div>
-    );
-  }
-
-  // Show Projects Dashboard page
-  if (currentPage === 'projects') {
-    return (
-      <div className="App">
-        <ProjectsDashboardPage 
-          currentUserId={currentUserId}
-          currentUser={currentUser}
-          onNavigate={handleNavigate}
-          onLogout={handleLogout}
-        />
-      </div>
-    );
-  }
-
-  // Show Admin page
-  if (currentPage === 'admin') {
-    return (
-      <div className="App">
-        <AdminPage 
-          currentUserId={currentUserId}
-          currentUser={currentUser}
-          onNavigate={handleNavigate}
-          onLogout={handleLogout}
-        />
-      </div>
-    );
-  }
-
-  // Default fallback to Ad Hoc Assessments
+  // Normal application below
   return (
-    <div className="App">
-      <AdHocAssessmentsPage 
-        currentUserId={currentUserId}
-        currentUser={currentUser}
-        onNavigate={handleNavigate}
-        onLogout={handleLogout}
-      />
-    </div>
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          {/* Public Route */}
+          <Route path="/login" element={<LoginPage />} />
+
+          {/* Root redirect */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+          {/* Protected Routes - All wrapped in MainLayout */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <MainLayout />
+              </ProtectedRoute>
+            }
+          >
+            {/* Dashboard - Available to all authenticated users */}
+            <Route path="/dashboard" element={<Dashboard />} />
+
+            {/* Assessment - Available to all authenticated users */}
+            <Route path="/assessment" element={<UnifiedAssessmentPage />} />
+
+            {/* Assessment History - Available to all authenticated users */}
+            <Route path="/assessment-history" element={<AssessmentHistoryPage />} />
+
+            {/* Projects - Available to users who can view or create projects */}
+            <Route
+              path="/projects"
+              element={
+                <ProtectedRoute requirePermission="canViewProjectAssessments">
+                  <ProjectsDashboardPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* IS-OS Hub - Available to all authenticated users */}
+            <Route path="/is-os" element={<ISOSHub />} />
+            
+            {/* IS-OS Sub-routes */}
+            <Route path="/is-os/assessments/1x1/new" element={<OneOnOneNew />} />
+            <Route path="/is-os/assessments/history" element={<AssessmentHistory />} />
+
+            {/* Admin - Admin only */}
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute requirePermission="canAccessAdminPanel">
+                  <AdminPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Catch all - redirect to dashboard */}
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Route>
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
 

@@ -78,9 +78,12 @@ const RolesManager = () => {
   };
 
   return (
-    <div>
+    <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h3 className="text-lg font-semibold text-gray-900">Manage Roles</h3>
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">Manage Roles</h3>
+          <p className="text-sm text-gray-600">Define user roles and permissions</p>
+        </div>
         <button
           onClick={() => setIsAdding(true)}
           className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -91,7 +94,7 @@ const RolesManager = () => {
       </div>
 
       {isAdding && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+        <div className="bg-white rounded-lg shadow-md p-4 mb-4 border border-blue-200">
           <h4 className="font-semibold text-gray-900 mb-3">Add New Role</h4>
           <div className="grid grid-cols-1 gap-4">
             <div>
@@ -100,17 +103,17 @@ const RolesManager = () => {
                 type="text"
                 value={newRole.name}
                 onChange={(e) => setNewRole({ ...newRole, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 placeholder="Senior Developer"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
               <input
                 type="text"
                 value={newRole.description}
                 onChange={(e) => setNewRole({ ...newRole, description: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 placeholder="Description of the role"
               />
             </div>
@@ -137,13 +140,13 @@ const RolesManager = () => {
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      <div className="bg-white rounded-lg shadow-md overflow-hidden">
         <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-200">
-              <th className="text-left py-3 px-4 font-semibold text-gray-700">Role Name</th>
-              <th className="text-left py-3 px-4 font-semibold text-gray-700">Description</th>
-              <th className="text-right py-3 px-4 font-semibold text-gray-700">Actions</th>
+          <thead className="bg-gray-800 text-white">
+            <tr>
+              <th className="text-left py-3 px-4 font-semibold">Role Name</th>
+              <th className="text-left py-3 px-4 font-semibold">Description</th>
+              <th className="text-right py-3 px-4 font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody>
