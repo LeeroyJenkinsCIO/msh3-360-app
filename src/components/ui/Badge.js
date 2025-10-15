@@ -1,51 +1,27 @@
+// src/components/ui/Badge.js
 import React from 'react';
 
-/**
- * Badge Component
- * Consistent badge/pill styling for status indicators, roles, etc.
- * 
- * Props:
- * - children: Badge text
- * - color: 'culture' | 'competencies' | 'execution' | 'admin' | 'isl' | 'isf' | 'success' | 'neutral'
- * - size: 'sm' | 'md' | 'lg'
- * - className: Additional classes
- */
+const Badge = ({ children, variant = 'default', className = '' }) => {
+  const baseStyles = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium';
+  
+  const variantStyles = {
+    // Role-specific colors
+    danger: 'bg-red-100 text-red-800 border border-red-200',           // Admin - RED
+    secondary: 'bg-gray-100 text-gray-800 border border-gray-200',     // ISE - GRAY
+    primary: 'bg-blue-100 text-blue-800 border border-blue-200',       // ISL - BLUE
+    warning: 'bg-yellow-100 text-yellow-800 border border-yellow-200', // Supervisor - YELLOW
+    success: 'bg-green-100 text-green-800 border border-green-200',    // ISF - GREEN
+    
+    // Additional variants for other uses
+    default: 'bg-gray-100 text-gray-800 border border-gray-200',
+    info: 'bg-blue-50 text-blue-700 border border-blue-100',
+    admin: 'bg-red-100 text-red-800 border border-red-200',            // Alias for danger
+  };
 
-const Badge = ({ 
-  children, 
-  color = 'neutral', 
-  size = 'md',
-  className = '' 
-}) => {
-  const baseClasses = 'inline-flex items-center font-medium rounded-full';
-  
-  const colors = {
-    // Domain colors (MSH³ Framework)
-    culture: 'bg-culture-light text-culture-dark',
-    competencies: 'bg-competencies-light text-competencies-dark',
-    execution: 'bg-execution-light text-execution-dark',
-    
-    // Role colors
-    admin: 'bg-admin-light text-admin-dark',
-    isl: 'bg-isl-light text-isl-dark',
-    isf: 'bg-isf-light text-isf-dark',
-    
-    // Status mappings using theme colors
-    success: 'bg-execution-light text-execution-dark',  // Maps to execution (green)
-    neutral: 'bg-neutral-light text-neutral-dark',       // Custom neutral from theme
-  };
-  
-  const sizes = {
-    sm: 'px-2 py-0.5 text-xs',
-    md: 'px-2.5 py-0.5 text-sm',
-    lg: 'px-3 py-1 text-base',
-  };
-  
-  const colorClass = colors[color] || colors.neutral;
-  const sizeClass = sizes[size] || sizes.md;
-  
+  const styles = variantStyles[variant] || variantStyles.default;
+
   return (
-    <span className={`${baseClasses} ${colorClass} ${sizeClass} ${className}`}>
+    <span className={`${baseStyles} ${styles} ${className}`}>
       {children}
     </span>
   );

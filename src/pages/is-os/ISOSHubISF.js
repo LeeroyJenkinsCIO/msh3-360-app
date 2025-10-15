@@ -1,0 +1,635 @@
+// 📁 SAVE TO: src/pages/is-os/ISOSHubISF.jsx
+// ISF Hub - Individual contributor view with personal performance
+
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../../firebase';
+import { 
+  Calendar, Zap, ArrowRight, 
+  TrendingUp, TrendingDown, Minus, Award, User, Users, Building2, Target, CheckCircle, Eye, BarChart3, AlertTriangle
+} from 'lucide-react';
+import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
+import Badge from '../../components/ui/Badge';
+import { useAuth } from '../../contexts/AuthContext';
+import { getPillarDisplayName } from '../../utils/pillarHelpers';
+import AssessmentCycleGrid from '../../components/hubs/AssessmentCycleGrid';
+
+function ISOSHubISF() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  
+  // ==================== CONSTANTS ====================
+  const CYCLE_START_DATE = new Date(2025, 9, 1);
+  
+  // ==================== STATE ====================
+  const [myAssessments, setMyAssessments] = useState([]);
+  const [pillarInfo, setPillarInfo] = useState(null);
+  const [teamInfo, setTeamInfo] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [metrics, setMetrics] = useState({
+    cycleNumber: 1,
+    cycleInYear: 1,
+    cycleMonth: 1,
+    assessmentType: '1x1',
+    currentMonthName: 'October 2025',
+    nextReviewDate: null,
+    isPastReviewWindow: false,
+    myComposite: 0,
+    myPosition: 'Not Assessed',
+    myTrend: 'stable',
+    assessmentsReceived: 0,
+    lastAssessmentDate: null,
+    teamAvg: 0,
+    myVsTeam: 'At Average'
+  });
+
+  // ==================== HELPER FUNCTIONS ====================
+  const calculateDeadline = (monthStart) => {
+    let businessDays = 0;
+    let currentDate = new Date(monthStart);
+    
+    while (businessDays < 5) {
+      currentDate.setDate(currentDate.getDate() + 1);
+      const dayOfWeek = currentDate.getDay();
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+        businessDays++;
+      }
+    }
+    
+    return currentDate;
+  };
+
+  const getCurrentCycleInfo = (date = new Date()) => {
+    const monthsSinceStart = (date.getFullYear() - CYCLE_START_DATE.getFullYear()) * 12 + 
+                             (date.getMonth() - CYCLE_START_DATE.getMonth());
+    
+    const cycleNumber = Math.floor(monthsSinceStart / 3) + 1;
+    const cycleMonth = (monthsSinceStart % 3) + 1;
+    const assessmentType = cycleMonth === 3 ? '360' : '1x1';
+    const cycleInYear = ((cycleNumber - 1) % 4) + 1;
+    
+    const currentMonthName = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
+    
+    const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
+    const nextReviewDate = calculateDeadline(monthStart);
+    const isPastReviewWindow = date > nextReviewDate;
+    
+    return {
+      cycleNumber,
+      cycleInYear,
+      cycleMonth,
+      assessmentType,
+      currentMonthName,
+      nextReviewDate,
+      isPastReviewWindow
+    };
+  };
+
+  const getTimeSinceAssessment = (date) => {
+    if (!date) return 'No assessment';
+    const now = new Date();
+    const assessmentDate = new Date(date);
+    
+    const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const assessmentMidnight = new Date(assessmentDate.getFullYear(), assessmentDate.getMonth(), assessmentDate.getDate());
+    
+    const daysDiff = Math.floor((nowMidnight - assessmentMidnight) / (1000 * 60 * 60 * 24));
+    
+    if (daysDiff === 0) return 'Today';
+    if (daysDiff === 1) return 'Yesterday';
+    if (daysDiff < 30) return `${daysDiff} days ago`;
+    if (daysDiff < 60) return '1 month ago';
+    return `${Math.floor(daysDiff / 30)} months ago`;
+  };
+
+  const getMonthYear = (date) => {
+    if (!date) return 'N/A';
+    return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  };
+
+  const getCompositeZoneName = (score) => {
+    if (score >= 11 && score <= 12) return 'Exceptional';
+    if (score >= 7 && score <= 10) return 'Above Baseline';
+    if (score >= 5 && score <= 6) return 'Baseline';
+    if (score >= 0 && score <= 4) return 'Below Baseline';
+    return 'Not Assessed';
+  };
+
+  // ==================== DATA FETCHING ====================
+  useEffect(() => {
+    const fetchMyData = async () => {
+      try {
+        setLoading(true);
+        
+        const now = new Date();
+        const cycleInfo = getCurrentCycleInfo(now);
+        
+        // Get my pillar information
+        if (user.pillar) {
+          const pillarsRef = collection(db, 'pillars');
+          const pillarQuery = query(pillarsRef, where('pillarId', '==', user.pillar));
+          const pillarSnapshot = await getDocs(pillarQuery);
+          
+          if (!pillarSnapshot.empty) {
+            const pillarData = {
+              id: pillarSnapshot.docs[0].id,
+              ...pillarSnapshot.docs[0].data()
+            };
+            setPillarInfo(pillarData);
+          }
+        }
+        
+        // Get my assessments (where I'm the subject)
+        const assessmentsRef = collection(db, 'assessments');
+        const myAssessmentsQuery = query(
+          assessmentsRef,
+          where('subjectId', '==', user.uid)
+        );
+        const assessmentsSnapshot = await getDocs(myAssessmentsQuery);
+        
+        // Sort and filter assessments
+        const assessments = assessmentsSnapshot.docs
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            completedAt: doc.data().completedAt?.toDate?.() || null,
+            createdAt: doc.data().createdAt?.toDate?.() || null
+          }))
+          .filter(data => data.status === 'completed' || data.status === 'not-aligned')
+          .sort((a, b) => {
+            const aTime = a.completedAt || new Date(0);
+            const bTime = b.completedAt || new Date(0);
+            return bTime - aTime;
+          });
+        
+        console.log('ISF - Total assessments loaded:', assessments.length);
+        console.log('ISF - Current user UID:', user.uid);
+        
+        setMyAssessments(assessments);
+
+        // Calculate metrics
+        const latestAssessment = assessments[0] || null;
+        
+        // Calculate trend (compare latest two assessments)
+        let trend = 'stable';
+        if (assessments.length >= 2) {
+          const scoreDiff = assessments[0].composite - assessments[1].composite;
+          if (scoreDiff > 0.5) trend = 'growth';
+          else if (scoreDiff < -0.5) trend = 'down';
+        }
+
+        const myComposite = latestAssessment?.composite || 0;
+
+        // Get team context (if I have a manager)
+        let teamAvg = 0;
+        let myVsTeam = 'At Average';
+        
+        if (user.managerId) {
+          const usersRef = collection(db, 'users');
+          const managerQuery = query(usersRef, where('userId', '==', user.managerId));
+          const managerSnapshot = await getDocs(managerQuery);
+          
+          if (!managerSnapshot.empty) {
+            const managerData = managerSnapshot.docs[0].data();
+            setTeamInfo({
+              supervisorName: managerData.displayName,
+              supervisorId: user.managerId
+            });
+            
+            const teamQuery = query(usersRef, where('managerId', '==', user.managerId));
+            const teamSnapshot = await getDocs(teamQuery);
+            
+            if (teamSnapshot.docs.length > 0) {
+              let teamScores = [];
+              
+              for (const teamDoc of teamSnapshot.docs) {
+                const teamMemberAuthUid = teamDoc.id;
+                
+                const memberAssessmentQuery = query(
+                  assessmentsRef,
+                  where('subjectId', '==', teamMemberAuthUid)
+                );
+                const memberAssessmentSnapshot = await getDocs(memberAssessmentQuery);
+                
+                const memberAssessments = memberAssessmentSnapshot.docs
+                  .map(doc => doc.data())
+                  .filter(data => (data.status === 'completed' || data.status === 'not-aligned') && data.composite)
+                  .sort((a, b) => {
+                    const aTime = a.completedAt?.toDate?.() || new Date(0);
+                    const bTime = b.completedAt?.toDate?.() || new Date(0);
+                    return bTime - aTime;
+                  });
+                
+                if (memberAssessments.length > 0) {
+                  teamScores.push(memberAssessments[0].composite);
+                }
+              }
+              
+              if (teamScores.length > 0) {
+                teamAvg = teamScores.reduce((a, b) => a + b, 0) / teamScores.length;
+                
+                if (myComposite > teamAvg + 0.5) myVsTeam = 'Above Average';
+                else if (myComposite < teamAvg - 0.5) myVsTeam = 'Below Average';
+                else myVsTeam = 'At Average';
+              }
+            }
+          }
+        }
+
+        setMetrics({
+          cycleNumber: cycleInfo.cycleNumber,
+          cycleInYear: cycleInfo.cycleInYear,
+          cycleMonth: cycleInfo.cycleMonth,
+          assessmentType: cycleInfo.assessmentType,
+          currentMonthName: cycleInfo.currentMonthName,
+          nextReviewDate: cycleInfo.nextReviewDate,
+          isPastReviewWindow: cycleInfo.isPastReviewWindow,
+          myComposite,
+          myPosition: latestAssessment?.nineBoxPosition || 'Not Assessed',
+          myTrend: trend,
+          assessmentsReceived: assessments.length,
+          lastAssessmentDate: latestAssessment?.completedAt || null,
+          teamAvg: teamAvg > 0 ? teamAvg.toFixed(1) : 0,
+          myVsTeam
+        });
+
+      } catch (error) {
+        console.error('Error fetching my data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMyData();
+  }, [user.uid]);
+
+  // ==================== EVENT HANDLERS ====================
+  const handleStartAssessments = (member) => {
+    // ISF members can't start assessments, but we need this for the grid
+    // Navigate to view if it exists
+    if (member.currentAssessment && member.currentAssessment.id) {
+      navigate(`/is-os/assessments/view/${member.currentAssessment.id}`);
+    }
+  };
+
+  const handleViewAssessment = (assessmentId) => {
+    navigate(`/is-os/assessments/view/${assessmentId}`);
+  };
+
+  // ==================== RENDER ====================
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading your performance data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      
+      {/* ==================== HERO BANNER ==================== */}
+      <div className="bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 text-white">
+        <div className="max-w-7xl mx-auto px-6 py-8">
+          <div className="flex items-center gap-3 mb-6">
+            <Zap className="w-10 h-10" />
+            <div>
+              <h1 className="text-5xl font-bold">IS OS Hub</h1>
+              <p className="text-emerald-100 text-lg">
+                My View - Personal Performance & Development
+              </p>
+            </div>
+          </div>
+          
+          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              
+              <div>
+                <div className="text-emerald-200 text-sm mb-1">Assessment Cycle</div>
+                <div className="text-white text-lg font-semibold">
+                  Cycle {metrics.cycleInYear} of 4
+                </div>
+                <div className="text-emerald-200 text-sm mt-1">
+                  Type: {metrics.assessmentType}
+                </div>
+              </div>
+              
+              <div className="text-center">
+                <div className="text-emerald-200 text-sm mb-1">Current Month</div>
+                <div className="text-white text-3xl font-bold flex items-center justify-center gap-2">
+                  <Calendar className="w-8 h-8" />
+                  {metrics.currentMonthName}
+                </div>
+                <div className="text-emerald-200 text-sm mt-3">
+                  {metrics.assessmentsReceived} {metrics.assessmentsReceived === 1 ? 'review' : 'reviews'} received
+                </div>
+              </div>
+              
+              <div className="text-right">
+                <div className="text-emerald-200 text-sm mb-1">My Next Review</div>
+                <div className="text-white text-lg font-semibold">
+                  Expected by {metrics.nextReviewDate?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </div>
+                <div className={`text-sm mt-2 flex items-center justify-end gap-1 ${metrics.isPastReviewWindow ? 'text-yellow-300' : 'text-emerald-200'}`}>
+                  {metrics.isPastReviewWindow && <AlertTriangle className="w-4 h-4" />}
+                  <span>
+                    {metrics.isPastReviewWindow ? 'Review window passed' : 'Within review window'}
+                  </span>
+                </div>
+                <div className="text-emerald-200 text-xs mt-1">
+                  (Reviews due within 5 business days)
+                </div>
+              </div>
+              
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        
+        {/* ==================== PERFORMANCE METRICS ==================== */}
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold text-gray-700 mb-4">My Performance</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            
+            {/* My Current Score Card */}
+            <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex-1">
+                  <h3 className="text-sm font-medium text-gray-600 mb-1">Current Score</h3>
+                  <div className="flex items-center gap-2">
+                    <span className="text-5xl font-bold text-gray-900">
+                      {metrics.myComposite || '—'}
+                    </span>
+                    <div className="text-sm text-gray-500 mt-2">
+                      0-12 scale
+                    </div>
+                  </div>
+                </div>
+                <Award className="w-8 h-8 text-green-600" />
+              </div>
+              <div className="mt-4 pt-3 border-t border-green-200 space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Zone</span>
+                  <span className="font-semibold text-gray-900">
+                    {getCompositeZoneName(metrics.myComposite)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">9-Box Position</span>
+                  <span className="font-semibold text-gray-900">{metrics.myPosition}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Trend</span>
+                  <div className="flex items-center gap-1">
+                    {metrics.myTrend === 'growth' && (
+                      <>
+                        <TrendingUp className="w-4 h-4 text-green-600" />
+                        <span className="font-semibold text-green-600">Growth</span>
+                      </>
+                    )}
+                    {metrics.myTrend === 'stable' && (
+                      <>
+                        <Minus className="w-4 h-4 text-gray-600" />
+                        <span className="font-semibold text-gray-600">Stable</span>
+                      </>
+                    )}
+                    {metrics.myTrend === 'down' && (
+                      <>
+                        <TrendingDown className="w-4 h-4 text-red-600" />
+                        <span className="font-semibold text-red-600">Down</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            {/* Assessment History Card */}
+            <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-2 border-blue-200">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex-1">
+                  <h3 className="text-sm font-medium text-gray-600 mb-1">Assessment History</h3>
+                  <div className="flex items-center gap-2">
+                    <span className="text-5xl font-bold text-gray-900">
+                      {metrics.assessmentsReceived}
+                    </span>
+                    <div className="text-sm text-gray-500 mt-2">
+                      total
+                    </div>
+                  </div>
+                </div>
+                <BarChart3 className="w-8 h-8 text-blue-600" />
+              </div>
+              <div className="mt-4 pt-3 border-t border-blue-200 space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Last Assessment</span>
+                  <span className="font-semibold text-gray-900">
+                    {getTimeSinceAssessment(metrics.lastAssessmentDate)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Review Date</span>
+                  <span className="font-semibold text-gray-900">
+                    {getMonthYear(metrics.lastAssessmentDate)}
+                  </span>
+                </div>
+              </div>
+            </Card>
+
+            {/* Team Context Card */}
+            <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex-1">
+                  <h3 className="text-sm font-medium text-gray-600 mb-1">Team Context</h3>
+                  <div className="flex items-center gap-2">
+                    <span className="text-5xl font-bold text-gray-900">
+                      {metrics.teamAvg || '—'}
+                    </span>
+                    <div className="text-sm text-gray-500 mt-2">
+                      team avg
+                    </div>
+                  </div>
+                </div>
+                <Users className="w-8 h-8 text-purple-600" />
+              </div>
+              <div className="mt-4 pt-3 border-t border-purple-200 space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">My vs Team</span>
+                  <span className={`font-semibold ${
+                    metrics.myVsTeam === 'Above Average' ? 'text-green-600' :
+                    metrics.myVsTeam === 'Below Average' ? 'text-red-600' :
+                    'text-gray-900'
+                  }`}>
+                    {metrics.myVsTeam}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Supervisor</span>
+                  <span className="font-semibold text-gray-900">
+                    {teamInfo?.supervisorName || 'Unassigned'}
+                  </span>
+                </div>
+              </div>
+            </Card>
+
+          </div>
+        </div>
+
+        {/* ==================== MY ASSESSMENTS GRID ==================== */}
+        <div className="mb-8">
+          <AssessmentCycleGrid
+            members={myAssessments.map(assessment => ({
+              id: assessment.id,
+              name: assessment.isSelfAssessment ? 'Self-Assessment' : 'Manager Assessment',
+              email: user.email || '',
+              layer: 'ISF',
+              pillarRole: 'Team Member',
+              subPillar: user.subPillar || 'N/A',
+              pillarId: user.pillar,
+              assessorName: assessment.assessorName || 'Manager',
+              isDirectReport: true,
+              currentAssessment: {
+                id: assessment.id,
+                status: assessment.status,
+                composite: assessment.composite,
+                alignmentStatus: assessment.status === 'not-aligned' ? 'not-aligned' : 'aligned',
+                nineBoxPosition: assessment.nineBoxPosition,
+                mshId: assessment.mshId || assessment.id.slice(0, 8),
+                hrpRequested: assessment.hrpRequested,
+                hrpReviewedAt: assessment.hrpReviewedAt
+              },
+              teamSize: 0
+            }))}
+            assessmentType={metrics.assessmentType}
+            currentMonthName={metrics.currentMonthName}
+            onStartAssessments={handleStartAssessments}
+            onViewAssessment={handleViewAssessment}
+            showStartButton={false}
+            emptyStateMessage="No assessments have been completed yet"
+            showPillarColumn={false}
+            showSubPillarColumn={false}
+            showTeamSizeColumn={false}
+            showAssessorColumn={true}
+            showHRPColumn={true}
+          />
+        </div>
+
+        {/* ==================== PILLAR & TEAM INFO ==================== */}
+        {pillarInfo && (
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">My Team Context</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card className="bg-gradient-to-br from-indigo-50 to-purple-50">
+                <div className="flex items-start gap-4">
+                  <div 
+                    className="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: `${pillarInfo.color || '#6366f1'}20` }}
+                  >
+                    <Building2 className="w-6 h-6" style={{ color: pillarInfo.color || '#6366f1' }} />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 mb-1">My Pillar</h3>
+                    <p className="text-lg font-bold text-gray-900">{getPillarDisplayName(pillarInfo.pillarId)}</p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {user.subPillar || 'General Team'}
+                    </p>
+                  </div>
+                </div>
+              </Card>
+
+              {teamInfo && (
+                <Card className="bg-gradient-to-br from-blue-50 to-cyan-50">
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <User className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-900 mb-1">My Supervisor</h3>
+                      <p className="text-lg font-bold text-gray-900">{teamInfo.supervisorName}</p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Direct supervisor
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ==================== QUICK ACTIONS ==================== */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card className="bg-gradient-to-br from-green-50 to-emerald-50">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 mb-2">My Dashboard</h3>
+                <p className="text-sm text-gray-600">
+                  View detailed performance metrics and trends
+                </p>
+              </div>
+              <BarChart3 className="w-8 h-8 text-green-600" />
+            </div>
+            <Button 
+              variant="secondary" 
+              className="w-full mt-4"
+              onClick={() => alert('Personal Dashboard coming soon!')}
+            >
+              View Dashboard
+              <ArrowRight className="w-5 h-5 ml-2" />
+            </Button>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-blue-50 to-cyan-50">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 mb-2">Progress Tracking</h3>
+                <p className="text-sm text-gray-600">
+                  Track your development goals and milestones
+                </p>
+              </div>
+              <Target className="w-8 h-8 text-blue-600" />
+            </div>
+            <Button 
+              variant="secondary" 
+              className="w-full mt-4"
+              onClick={() => alert('Progress Tracking coming soon!')}
+            >
+              View Progress
+              <ArrowRight className="w-5 h-5 ml-2" />
+            </Button>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-purple-50 to-pink-50">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 mb-2">Development Plan</h3>
+                <p className="text-sm text-gray-600">
+                  Access your career development resources
+                </p>
+              </div>
+              <Award className="w-8 h-8 text-purple-600" />
+            </div>
+            <Button 
+              variant="secondary" 
+              className="w-full mt-4"
+              onClick={() => alert('Development Plan coming soon!')}
+            >
+              View Plan
+              <ArrowRight className="w-5 h-5 ml-2" />
+            </Button>
+          </Card>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+export default ISOSHubISF;

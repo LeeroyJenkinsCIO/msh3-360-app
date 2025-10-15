@@ -9,6 +9,36 @@ import { getUserPermissions } from '../utils/permissions';
 const AuthContext = createContext(null);
 
 /**
+ * Maps database user structure to app-compatible role
+ * Database has: layer (ISE/ISL/ISF/ADMIN), flags, pillarRole
+ * App expects: role (for navigation and permissions)
+ */
+function mapUserRole(userData) {
+  // Admin user
+  if (userData.flags?.isAdmin) {
+    return 'admin';
+  }
+  
+  // Map layer to role for navigation
+  switch (userData.layer) {
+    case 'ISE':
+      return 'ise';
+    case 'ISL':
+      return 'isl';
+    case 'ISF':
+      // Further differentiate ISF by pillarRole
+      if (userData.pillarRole === 'supervisor') {
+        return 'supervisor';
+      }
+      return 'isf';
+    case 'ADMIN':
+      return 'admin';
+    default:
+      return 'isf'; // Default fallback
+  }
+}
+
+/**
  * AuthProvider Component
  * Manages authentication state and user permissions
  * 
@@ -35,28 +65,41 @@ export const AuthProvider = ({ children }) => {
           
           if (userDoc.exists()) {
             const userData = userDoc.data();
-            setUser({
+            
+            // Map database structure to app-compatible user object
+            const mappedUser = {
               uid: firebaseUser.uid,
               email: firebaseUser.email,
-              ...userData
-            });
+              ...userData,
+              // Add computed role for navigation/permissions
+              role: mapUserRole(userData),
+              // Use displayName if available, fallback to email
+              name: userData.displayName || firebaseUser.displayName || firebaseUser.email
+            };
+            
+            setUser(mappedUser);
           } else {
             // User exists in Auth but not in Firestore
-            // Set basic user info
+            console.warn('User found in Auth but not in Firestore:', firebaseUser.uid);
             setUser({
               uid: firebaseUser.uid,
               email: firebaseUser.email,
               role: 'isf', // Default role
-              name: firebaseUser.displayName || firebaseUser.email
+              name: firebaseUser.displayName || firebaseUser.email,
+              layer: 'ISF',
+              flags: {}
             });
           }
         } catch (error) {
           console.error('Error fetching user data:', error);
+          // Set minimal user on error
           setUser({
             uid: firebaseUser.uid,
             email: firebaseUser.email,
             role: 'isf', // Default role on error
-            name: firebaseUser.displayName || firebaseUser.email
+            name: firebaseUser.displayName || firebaseUser.email,
+            layer: 'ISF',
+            flags: {}
           });
         }
       } else {

@@ -35,16 +35,8 @@ export default function LoginPage() {
           ...userData
         });
         
-        // Navigate based on role
-        if (userData.role === 'admin') {
-          navigate('/admin');
-        } else if (userData.role === 'supervisor') {
-          navigate('/is-os');
-        } else if (userData.role === 'isl' || userData.role === 'isf') {
-          navigate('/projects');
-        } else {
-          navigate('/dashboard');
-        }
+        // ALL users default to ISOS Hub after login
+        navigate('/is-os');
       } else {
         setError('User profile not found. Please contact administrator.');
         await auth.signOut();
@@ -67,14 +59,14 @@ export default function LoginPage() {
     }
   };
 
-  const devLogin = async (devEmail) => {
-    setEmail(devEmail);
-    setPassword('password123');
+  const adminLogin = async () => {
+    setEmail('admin@sierranevada.com');
+    setPassword('password');
     setError('');
     setLoading(true);
 
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, devEmail, 'password123');
+      const userCredential = await signInWithEmailAndPassword(auth, 'admin@sierranevada.com', 'password');
       const user = userCredential.user;
 
       const userDoc = await getDoc(doc(db, 'users', user.uid));
@@ -87,22 +79,18 @@ export default function LoginPage() {
           ...userData
         });
         
-        // Navigate based on role
-        if (userData.role === 'admin') {
-          navigate('/admin');
-        } else if (userData.role === 'supervisor') {
-          navigate('/is-os');
-        } else if (userData.role === 'isl' || userData.role === 'isf' || userData.role === 'ise') {
-          navigate('/is-os');
-        } else {
-          navigate('/dashboard');
-        }
+        // Admin also defaults to ISOS Hub
+        navigate('/is-os');
       } else {
-        setError('User profile not found in Firestore. Run createAuthUsers.js script.');
+        setError('Admin profile not found. Please run seedFirebase.js script.');
       }
     } catch (err) {
-      console.error('Dev login error:', err);
-      setError(`Dev login failed: ${err.message}`);
+      console.error('Admin login error:', err);
+      if (err.code === 'auth/user-not-found') {
+        setError('Admin user not found. Please run seedFirebase.js script.');
+      } else {
+        setError(`Admin login failed: ${err.message}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -193,61 +181,18 @@ export default function LoginPage() {
               Development Quick Login
             </p>
             
-            <div className="space-y-3">
-              <Button
-                variant="danger"
-                onClick={() => devLogin('admin@sierranevada.com')}
-                disabled={loading}
-                className="w-full"
-              >
-                Admin Login
-              </Button>
-              
-              <Button
-                variant="primary"
-                onClick={() => devLogin('ise@sierranevada.com')}
-                disabled={loading}
-                className="w-full"
-              >
-                ISE Login
-              </Button>
-              
-              <Button
-                variant="isl"
-                onClick={() => devLogin('isl@sierranevada.com')}
-                disabled={loading}
-                className="w-full"
-              >
-                ISL Login
-              </Button>
-
-              <Button
-                variant="primary"
-                onClick={() => devLogin('supervisor@sierranevada.com')}
-                disabled={loading}
-                className="w-full bg-msh-purple hover:bg-purple-700"
-              >
-                Supervisor Login
-              </Button>
-              
-              <Button
-                variant="isf"
-                onClick={() => devLogin('isf@sierranevada.com')}
-                disabled={loading}
-                className="w-full"
-              >
-                ISF Login
-              </Button>
-              
-              <Button
-                variant="competencies"
-                onClick={() => devLogin('projectlead@sierranevada.com')}
-                disabled={loading}
-                className="w-full"
-              >
-                Project Lead Login
-              </Button>
-            </div>
+            <Button
+              variant="danger"
+              onClick={adminLogin}
+              disabled={loading}
+              className="w-full"
+            >
+              Admin Login
+            </Button>
+            
+            <p className="text-xs text-neutral text-center mt-3">
+              All users: <span className="font-mono">password</span>
+            </p>
           </Card>
 
         </div>

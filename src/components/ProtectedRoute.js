@@ -1,7 +1,6 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { hasPermission, hasRole } from '../utils/permissions';
 
 /**
  * ProtectedRoute Component
@@ -14,11 +13,6 @@ import { hasPermission, hasRole } from '../utils/permissions';
  *   <Dashboard />
  * </ProtectedRoute>
  * 
- * // Require specific permission
- * <ProtectedRoute requirePermission="canAccessAdminPanel">
- *   <AdminPage />
- * </ProtectedRoute>
- * 
  * // Require specific role
  * <ProtectedRoute requireRole="admin">
  *   <AdminPage />
@@ -28,23 +22,15 @@ import { hasPermission, hasRole } from '../utils/permissions';
  * <ProtectedRoute requireRole={['admin', 'ise']}>
  *   <CreateProject />
  * </ProtectedRoute>
- * 
- * // Custom permission check function
- * <ProtectedRoute 
- *   requirePermission={(permissions) => permissions.canCreateProjects}
- * >
- *   <CreateProject />
- * </ProtectedRoute>
  */
 
 const ProtectedRoute = ({ 
   children, 
-  requirePermission = null,
   requireRole = null,
   fallbackPath = '/login',
   showAccessDenied = true
 }) => {
-  const { user, permissions, isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const location = useLocation();
 
   // Not authenticated - redirect to login
@@ -55,28 +41,23 @@ const ProtectedRoute = ({
   // Check role requirement
   if (requireRole) {
     const roles = Array.isArray(requireRole) ? requireRole : [requireRole];
-    const hasRequiredRole = roles.some(role => hasRole(user, role));
+    
+    // Check if user has any of the required roles (case-insensitive)
+    const hasRequiredRole = roles.some(role => {
+      const roleLower = role?.toLowerCase();
+      
+      // Check both user.role and user.flags.isAdmin for admin access
+      if (roleLower === 'admin') {
+        return user?.role?.toLowerCase() === 'admin' || user?.flags?.isAdmin === true;
+      }
+      
+      // Check user.role and user.layer (case-insensitive)
+      return user?.role?.toLowerCase() === roleLower || 
+             user?.layer?.toLowerCase() === roleLower;
+    });
     
     if (!hasRequiredRole) {
-      return showAccessDenied ? <AccessDenied /> : <Navigate to="/dashboard" replace />;
-    }
-  }
-
-  // Check permission requirement
-  if (requirePermission) {
-    let hasRequiredPermission = false;
-
-    // If permission is a function, call it with permissions object
-    if (typeof requirePermission === 'function') {
-      hasRequiredPermission = requirePermission(permissions);
-    } 
-    // If permission is a string, check directly
-    else if (typeof requirePermission === 'string') {
-      hasRequiredPermission = hasPermission(user, requirePermission);
-    }
-
-    if (!hasRequiredPermission) {
-      return showAccessDenied ? <AccessDenied /> : <Navigate to="/dashboard" replace />;
+      return showAccessDenied ? <AccessDenied /> : <Navigate to="/wiki" replace />;
     }
   }
 
@@ -125,11 +106,16 @@ const AccessDenied = () => {
           {/* User Info */}
           <div className="bg-neutral-light rounded px-4 py-3 mb-6 text-sm">
             <div className="text-neutral-dark">
-              <span className="font-medium">Logged in as:</span> {user?.name || user?.email}
+              <span className="font-medium">Logged in as:</span> {user?.displayName || user?.name || user?.email}
             </div>
             <div className="text-neutral-medium mt-1">
-              <span className="font-medium">Role:</span> {user?.role?.toUpperCase() || 'Unknown'}
+              <span className="font-medium">Role:</span> {user?.layer || user?.role?.toUpperCase() || 'Unknown'}
             </div>
+            {user?.flags?.isAdmin && (
+              <div className="text-neutral-medium mt-1">
+                <span className="font-medium">Admin:</span> Yes
+              </div>
+            )}
           </div>
 
           {/* Actions */}
@@ -140,12 +126,12 @@ const AccessDenied = () => {
             >
               Go Back
             </button>
-            <a
-              href="/dashboard"
-              className="flex-1 px-4 py-2 bg-primary text-white rounded hover:bg-primary-dark transition-colors text-center"
+            <button
+              onClick={() => window.location.href = '/wiki'}
+              className="flex-1 px-4 py-2 bg-primary text-white rounded hover:bg-primary-dark transition-colors"
             >
-              Dashboard
-            </a>
+              Go to Wiki
+            </button>
           </div>
         </div>
       </div>
