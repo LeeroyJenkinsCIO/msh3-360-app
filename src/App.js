@@ -76,25 +76,29 @@ function App() {
       <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-blue-900 flex items-center justify-center p-4">
         <div className="max-w-2xl w-full bg-white rounded-2xl shadow-2xl p-8 md:p-12 text-center">
           <div className="mb-8">
-            <div className="inline-block p-4 bg-blue-100 rounded-full mb-4">
-              <svg className="w-16 h-16 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+            {/* MSH³ Logo */}
+            <div className="flex items-center justify-center gap-2 mb-6">
+              <svg className="w-12 h-12 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
               </svg>
+              <div className="text-left">
+                <h2 className="text-3xl font-bold text-gray-900" style={{ letterSpacing: '-0.02em' }}>
+                  MSH³
+                </h2>
+                <div className="text-xs text-gray-600 font-medium" style={{ letterSpacing: '0.3px' }}>
+                  <span className="font-bold">M</span>indset | <span className="font-bold">S</span>killset | <span className="font-bold">H</span>abits
+                </div>
+              </div>
             </div>
+
             <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
               Under Construction
             </h1>
             <p className="text-xl text-gray-600 mb-2">
-              MSH³ 360 Assessment Platform
+              We're MSH<sup>n</sup> at the speed of scale
             </p>
             <p className="text-gray-500">
-              We're working hard to bring you something amazing.
-            </p>
-          </div>
-          
-          <div className="border-t border-gray-200 pt-6">
-            <p className="text-sm text-gray-500">
-              Check back soon or contact your administrator for access.
+              working hard to bring you something amazing.
             </p>
           </div>
         </div>
