@@ -24,7 +24,7 @@ import ISOSHubISFSupervisor from './pages/is-os/ISOSHubISFSupervisor';
 import AssessmentHistory from './pages/is-os/AssessmentHistory';
 import OneOnOneAssessGrid from './pages/is-os/1x1AssessGrid';
 import AssessmentDetailView from './pages/is-os/AssessmentDetailView';
-import HRPAssessmentReview from './pages/is-os/HRPAssessmentReview'; // NEW
+import HRPAssessmentReview from './pages/is-os/HRPAssessmentReview';
 
 // Hub router - routes users to correct hub based on layer/role
 function SimpleHubRouter() {
@@ -101,12 +101,15 @@ function App() {
             {/* Assessment History */}
             <Route path="is-os/assessments/history" element={<AssessmentHistory />} />
             
-            {/* 1x1 Assessment Routes */}
+            {/* 1x1 Assessment Routes - ID is now OPTIONAL */}
             <Route path="is-os/assessments/1x1/new" element={<OneOnOneAssessGrid />} />
-            <Route path="is-os/assessments/1x1/edit/:id" element={<OneOnOneAssessGrid />} />
+            <Route path="is-os/assessments/1x1/edit/:id?" element={<OneOnOneAssessGrid />} />
             <Route path="is-os/assessments/view/:id" element={<AssessmentDetailView />} />
             
-            {/* HRP Assessment Review Route - NEW */}
+            {/* 360 Assessment Routes - ID is OPTIONAL (for future 360s) */}
+            <Route path="is-os/assessments/360/edit/:id?" element={<OneOnOneAssessGrid />} />
+            
+            {/* HRP Assessment Review Route */}
             <Route path="is-os/assessments/hrp-review/:assessmentId" element={<HRPAssessmentReview />} />
             
             {/* Admin Panel (with tabs for Users and Database) */}

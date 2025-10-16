@@ -1,4 +1,4 @@
-// App.js - Complete with ALL role-based hub routing + Assessment Routes FIXED
+// App.js - Complete with ALL role-based hub routing + Assessment Routes + HRP Review
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -23,7 +23,8 @@ import ISOSHubISF from './pages/is-os/ISOSHubISF';
 import ISOSHubISFSupervisor from './pages/is-os/ISOSHubISFSupervisor';
 import AssessmentHistory from './pages/is-os/AssessmentHistory';
 import OneOnOneAssessGrid from './pages/is-os/1x1AssessGrid';
-import AssessmentDetailView from './pages/is-os/AssessmentDetailView'; // ⭐ ADDED
+import AssessmentDetailView from './pages/is-os/AssessmentDetailView';
+import HRPAssessmentReview from './pages/is-os/HRPAssessmentReview'; // NEW
 
 // Hub router - routes users to correct hub based on layer/role
 function SimpleHubRouter() {
@@ -100,10 +101,13 @@ function App() {
             {/* Assessment History */}
             <Route path="is-os/assessments/history" element={<AssessmentHistory />} />
             
-            {/* 1x1 Assessment Routes - FIXED */}
+            {/* 1x1 Assessment Routes */}
             <Route path="is-os/assessments/1x1/new" element={<OneOnOneAssessGrid />} />
             <Route path="is-os/assessments/1x1/edit/:id" element={<OneOnOneAssessGrid />} />
             <Route path="is-os/assessments/view/:id" element={<AssessmentDetailView />} />
+            
+            {/* HRP Assessment Review Route - NEW */}
+            <Route path="is-os/assessments/hrp-review/:assessmentId" element={<HRPAssessmentReview />} />
             
             {/* Admin Panel (with tabs for Users and Database) */}
             <Route path="admin" element={
