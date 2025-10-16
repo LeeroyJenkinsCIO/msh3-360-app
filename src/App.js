@@ -76,10 +76,21 @@ function App() {
       <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-blue-900 flex items-center justify-center p-4">
         <div className="max-w-2xl w-full bg-white rounded-2xl shadow-2xl p-8 md:p-12 text-center">
           <div className="mb-8">
-            {/* MSH³ Logo */}
+            {/* MSH³ Logo - Using Route icon from lucide-react */}
             <div className="flex items-center justify-center gap-2 mb-6">
-              <svg className="w-12 h-12 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+              <svg 
+                width="48" 
+                height="48" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="#3b82f6" 
+                strokeWidth="2.5" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+              >
+                <circle cx="6" cy="19" r="3"></circle>
+                <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"></path>
+                <circle cx="18" cy="5" r="3"></circle>
               </svg>
               <div className="text-left">
                 <h2 className="text-3xl font-bold text-gray-900" style={{ letterSpacing: '-0.02em' }}>
