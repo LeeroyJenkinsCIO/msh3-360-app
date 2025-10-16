@@ -1,5 +1,5 @@
-// 📁 SAVE TO: src/pages/is-os/ISOSHubISL.jsx
-// CLEAN VERSION - Assessment Cycle Grid only, no legacy code
+// 📍 SAVE TO: src/pages/is-os/ISOSHubISL.jsx
+// ISL Hub - Pillar Leader view with team metrics
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -19,8 +19,10 @@ function ISOSHubISL() {
   const { user } = useAuth();
   const navigate = useNavigate();
   
+  // ==================== CONSTANTS ====================
   const CYCLE_START_DATE = new Date(2025, 9, 1);
   
+  // ==================== STATE ====================
   const [pillarInfo, setPillarInfo] = useState(null);
   const [gridMembers, setGridMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -46,6 +48,7 @@ function ISOSHubISL() {
     alignmentRate: 0
   });
 
+  // ==================== HELPER FUNCTIONS ====================
   const calculateDeadline = (monthStart) => {
     let businessDays = 0;
     let currentDate = new Date(monthStart);
@@ -117,6 +120,7 @@ function ISOSHubISL() {
     return 'Not Assessed';
   };
 
+  // ==================== DATA FETCHING ====================
   useEffect(() => {
     const fetchPillarData = async () => {
       try {
@@ -127,6 +131,7 @@ function ISOSHubISL() {
         const currentYear = now.getFullYear();
         const cycleInfo = getCurrentCycleInfo(now);
         
+        // Find pillar where user is leader
         const pillarsRef = collection(db, 'pillars');
         const pillarQuery = query(pillarsRef, where('pillarLeaderId', '==', user.userId));
         const pillarSnapshot = await getDocs(pillarQuery);
@@ -142,8 +147,17 @@ function ISOSHubISL() {
         };
         setPillarInfo(pillarData);
         
-        // Fetch ALL users and create mapping
-        const allUsersSnapshot = await getDocs(collection(db, 'users'));
+        // Fetch all data in parallel
+        const [allUsersSnapshot, allAssessmentsSnapshot] = await Promise.all([
+          getDocs(collection(db, 'users')),
+          getDocs(query(
+            collection(db, 'assessments'),
+            where('cycleMonth', '==', currentMonth + 1),
+            where('cycleYear', '==', currentYear)
+          ))
+        ]);
+        
+        // Build user maps
         const allUsersMap = {};
         const userIdToAuthUid = {};
         
@@ -155,23 +169,7 @@ function ISOSHubISL() {
           }
         });
         
-        console.log('🗺️ User ID mapping created:', {
-          totalUsers: Object.keys(userIdToAuthUid).length,
-          currentUserAuthUid: user.uid,
-          currentUserId: user.userId
-        });
-        
-        // Fetch ALL assessments for current month (like ISE does)
-        const allAssessmentsQuery = query(
-          collection(db, 'assessments'),
-          where('cycleMonth', '==', currentMonth + 1),  // cycleMonth is 1-based
-          where('cycleYear', '==', currentYear)
-        );
-        const allAssessmentsSnapshot = await getDocs(allAssessmentsQuery);
-        
-        console.log(`📊 Found ${allAssessmentsSnapshot.docs.length} assessments for current month`);
-        
-        // Group assessments by subjectId (Firebase auth UID)
+        // Group assessments by subject
         const assessmentsBySubject = {};
         allAssessmentsSnapshot.docs.forEach(doc => {
           const assessmentData = {
@@ -188,8 +186,7 @@ function ISOSHubISL() {
           assessmentsBySubject[subjectId].push(assessmentData);
         });
         
-        console.log('📦 Assessments grouped by subject:', Object.keys(assessmentsBySubject).length);
-        
+        // Get pillar members
         const usersRef = collection(db, 'users');
         const pillarMembersQuery = query(
           usersRef,
@@ -202,6 +199,7 @@ function ISOSHubISL() {
         for (const doc of membersSnapshot.docs) {
           const memberData = doc.data();
           
+          // Skip self
           if (memberData.userId === user.userId) continue;
           
           // Get assessor info
@@ -211,26 +209,14 @@ function ISOSHubISL() {
           
           // Get member's Firebase auth UID
           const memberAuthUid = userIdToAuthUid[memberData.userId];
+          if (!memberAuthUid) continue;
           
-          if (!memberAuthUid) {
-            console.log(`⚠️ No auth UID found for ${memberData.displayName}`);
-            continue;
-          }
-          
-          // Get assessments for this member from pre-fetched data
+          // Get assessments for this member
           const memberAssessments = assessmentsBySubject[memberAuthUid] || [];
-          
-          console.log(`📋 ${memberData.displayName}:`, {
-            memberAuthUid,
-            assessorAuthUid,
-            assessorName,
-            assessmentsFound: memberAssessments.length
-          });
           
           let latestAssessment = null;
           
           if (memberAssessments.length > 0) {
-            // Sort by creation date
             const sortedAssessments = memberAssessments.sort((a, b) => {
               const aTime = a.createdAt || new Date(0);
               const bTime = b.createdAt || new Date(0);
@@ -242,25 +228,23 @@ function ISOSHubISL() {
             
             if (pendingAssessment) {
               latestAssessment = pendingAssessment;
-              console.log(`  ✅ Found pending assessment for ${memberData.displayName}`);
             } else {
               // Look for completed assessments by the correct assessor
               const completedAssessments = sortedAssessments
                 .filter(a => {
-                  const hasCompletedAt = !!a.completedAt;
-                  const assessorMatches = a.assessorId === assessorAuthUid;
-                  const statusGood = a.status === 'completed' || a.status === 'not-aligned';
-                  return hasCompletedAt && assessorMatches && statusGood;
+                  return a.completedAt && 
+                         a.assessorId === assessorAuthUid && 
+                         (a.status === 'completed' || a.status === 'not-aligned');
                 })
                 .sort((a, b) => b.completedAt - a.completedAt);
               
               if (completedAssessments.length > 0) {
                 latestAssessment = completedAssessments[0];
-                console.log(`  ✅ Using completed assessment (composite: ${latestAssessment.composite})`);
               }
             }
           }
 
+          // Get sub-pillar
           let memberSubPillar = 'Unassigned';
           if (memberData.subPillar) {
             memberSubPillar = memberData.subPillar;
@@ -294,11 +278,11 @@ function ISOSHubISL() {
         
         setGridMembers(allMembers);
         
+        // Get ISL's own assessment
         let myLastAssessment = null;
         let myComposite = null;
         let myLastAssessed = null;
         
-        // Get ISL's own assessments from the same batch
         const myAssessments = assessmentsBySubject[user.uid] || [];
         const sortedMyAssessments = myAssessments
           .filter(a => a.composite && (a.status === 'completed' || a.status === 'not-aligned'))
@@ -317,6 +301,7 @@ function ISOSHubISL() {
           }
         }
 
+        // Calculate pillar metrics
         const publishedAssessments = allMembers.filter(m => 
           m.currentAssessment?.composite !== undefined && 
           (m.currentAssessment.status === 'completed' || m.currentAssessment.status === 'not-aligned')
@@ -383,6 +368,7 @@ function ISOSHubISL() {
     fetchPillarData();
   }, [user.userId]);
 
+  // ==================== EVENT HANDLERS ====================
   const handleStartAssessments = () => {
     const directReports = gridMembers.filter(m => m.isDirectReport);
     const firstPending = directReports.find(m => 
@@ -404,6 +390,7 @@ function ISOSHubISL() {
     navigate(`/is-os/assessments/view/${assessmentId}`);
   };
 
+  // ==================== RENDER ====================
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -418,6 +405,7 @@ function ISOSHubISL() {
   return (
     <div className="min-h-screen bg-gray-50">
       
+      {/* ==================== HERO BANNER ==================== */}
       <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white">
         <div className="max-w-7xl mx-auto px-6 py-8">
           <div className="flex items-center gap-3 mb-6">
@@ -478,10 +466,12 @@ function ISOSHubISL() {
 
       <div className="max-w-7xl mx-auto px-6 py-8">
         
+        {/* ==================== PILLAR METRICS ==================== */}
         <div className="mb-8">
           <h2 className="text-lg font-semibold text-gray-700 mb-4">Pillar Metrics</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             
+            {/* Pillar Leadership Health Card */}
             <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
@@ -520,6 +510,7 @@ function ISOSHubISL() {
               </div>
             </Card>
 
+            {/* Pillar Health Card */}
             <Card className="bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-indigo-200">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
@@ -573,6 +564,7 @@ function ISOSHubISL() {
               </div>
             </Card>
 
+            {/* Monthly Progress Card */}
             <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-2 border-blue-200">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
@@ -605,6 +597,7 @@ function ISOSHubISL() {
           </div>
         </div>
 
+        {/* ==================== ASSESSMENT CYCLE GRID ==================== */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -636,6 +629,7 @@ function ISOSHubISL() {
           />
         </div>
 
+        {/* ==================== QUICK ACTIONS ==================== */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="bg-gradient-to-br from-indigo-50 to-purple-50">
             <div className="flex items-start justify-between mb-4">

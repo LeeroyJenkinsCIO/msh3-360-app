@@ -1,3 +1,6 @@
+// src/pages/is-os/AssessmentDetailView.js
+// FIXED VERSION - Corrected field names and score access
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
@@ -5,12 +8,8 @@ import { db } from '../../firebase';
 import { ArrowLeft, AlertCircle, CheckCircle } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
+import { getPillarDisplayName } from '../../utils/pillarHelpers';
 
-/**
- * Assessment Detail View
- * 
- * Read-only view of a completed assessment
- */
 function AssessmentDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -19,7 +18,6 @@ function AssessmentDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Load assessment
   useEffect(() => {
     const loadAssessment = async () => {
       try {
@@ -46,7 +44,6 @@ function AssessmentDetail() {
     loadAssessment();
   }, [id]);
 
-  // Format date
   const formatDate = (timestamp) => {
     if (!timestamp) return '—';
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
@@ -59,16 +56,14 @@ function AssessmentDetail() {
     });
   };
 
-  // Get display status
   const getDisplayStatus = () => {
     if (!assessment) return 'Draft';
     if (assessment.status === 'draft') return 'Draft';
     if (assessment.alignmentStatus === 'aligned' || assessment.status === 'completed') return 'Aligned';
-    if (assessment.alignmentStatus === 'needs-alignment' || assessment.status === 'not-aligned') return 'Not Aligned';
+    if (assessment.alignmentStatus === 'not-aligned' || assessment.status === 'not-aligned') return 'Not Aligned';
     return 'Draft';
   };
 
-  // Loading state
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 p-6">
@@ -84,26 +79,25 @@ function AssessmentDetail() {
     );
   }
 
-  // Error state
   if (error || !assessment) {
     return (
       <div className="min-h-screen bg-gray-50 p-6">
         <div className="max-w-5xl mx-auto">
           <Button
             variant="ghost"
-            onClick={() => navigate('/is-os/assessments/history')}
+            onClick={() => navigate('/is-os')}
             className="mb-4"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Assessment History
+            Back to Hub
           </Button>
           
           <Card className="p-12 text-center">
             <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
             <h2 className="text-xl font-bold text-gray-900 mb-2">Assessment Not Found</h2>
             <p className="text-gray-600 mb-6">{error || 'The assessment you are looking for does not exist.'}</p>
-            <Button onClick={() => navigate('/is-os/assessments/history')}>
-              Return to Assessment History
+            <Button onClick={() => navigate('/is-os')}>
+              Return to Hub
             </Button>
           </Card>
         </div>
@@ -112,6 +106,15 @@ function AssessmentDetail() {
   }
 
   const displayStatus = getDisplayStatus();
+  
+  // Calculate totals from scores object
+  const totalContribution = (assessment.scores?.culture?.contribution || 0) + 
+                           (assessment.scores?.competencies?.contribution || 0) + 
+                           (assessment.scores?.execution?.contribution || 0);
+  
+  const totalGrowth = (assessment.scores?.culture?.growth || 0) + 
+                      (assessment.scores?.competencies?.growth || 0) + 
+                      (assessment.scores?.execution?.growth || 0);
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -121,17 +124,17 @@ function AssessmentDetail() {
         <div className="mb-6">
           <Button
             variant="ghost"
-            onClick={() => navigate('/is-os/assessments/history')}
+            onClick={() => navigate('/is-os')}
             className="mb-4"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Assessment History
+            Back to Hub
           </Button>
 
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Assessment Details</h1>
-              <p className="text-gray-600">MSH ID: <span className="font-semibold text-blue-600">{assessment.mshId}</span></p>
+              <p className="text-gray-600">MSH ID: <span className="font-semibold text-blue-600">{assessment.mshId || 'N/A'}</span></p>
             </div>
             
             {/* Status Badge */}
@@ -157,20 +160,22 @@ function AssessmentDetail() {
           </div>
         </div>
 
-        {/* Assessee & Assessor Info */}
+        {/* Subject & Assessor Info */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           
-          {/* Assessee Card */}
+          {/* Subject Card - FIXED: Changed from assesseeName to subjectName */}
           <Card>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Assessee</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Subject</h3>
             <div className="flex items-center gap-4 mb-4">
               <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-2xl">
-                {assessment.assesseeName?.charAt(0).toUpperCase()}
+                {assessment.subjectName?.charAt(0).toUpperCase() || '?'}
               </div>
               <div>
-                <div className="font-semibold text-gray-900 text-xl">{assessment.assesseeName}</div>
-                <div className="text-sm text-gray-600">{assessment.assesseeLayer}</div>
-                <div className="text-sm text-gray-600">{assessment.assesseePillar}</div>
+                <div className="font-semibold text-gray-900 text-xl">{assessment.subjectName || 'Unknown'}</div>
+                <div className="text-sm text-gray-600">{assessment.subjectLayer || assessment.assessmentType || 'ISL'}</div>
+                {assessment.subjectPillar && (
+                  <div className="text-sm text-gray-600">{getPillarDisplayName(assessment.subjectPillar)}</div>
+                )}
               </div>
             </div>
           </Card>
@@ -180,12 +185,12 @@ function AssessmentDetail() {
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Assessor</h3>
             <div className="flex items-center gap-4 mb-4">
               <div className="w-16 h-16 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold text-2xl">
-                {assessment.assessorName?.charAt(0).toUpperCase()}
+                {assessment.assessorName?.charAt(0).toUpperCase() || 'A'}
               </div>
               <div>
-                <div className="font-semibold text-gray-900 text-xl">{assessment.assessorName}</div>
-                <div className="text-sm text-gray-600">{assessment.assessorLayer}</div>
-                <div className="text-sm text-gray-600">{formatDate(assessment.createdAt)}</div>
+                <div className="font-semibold text-gray-900 text-xl">{assessment.assessorName || 'Assessor'}</div>
+                <div className="text-sm text-gray-600">Completed: {formatDate(assessment.completedAt)}</div>
+                <div className="text-sm text-gray-600">Type: {assessment.assessmentType || '1x1'}</div>
               </div>
             </div>
           </Card>
@@ -197,12 +202,12 @@ function AssessmentDetail() {
           
           <div className="grid grid-cols-3 gap-4 mb-4">
             <div className="bg-white p-4 rounded-lg text-center">
-              <div className="text-4xl font-bold text-orange-600">{assessment.totalContribution ?? 0}</div>
+              <div className="text-4xl font-bold text-orange-600">{totalContribution}</div>
               <div className="text-sm text-gray-600">Contribution</div>
               <div className="text-xs text-gray-500">0-6 scale</div>
             </div>
             <div className="bg-white p-4 rounded-lg text-center">
-              <div className="text-4xl font-bold text-green-600">{assessment.totalGrowth ?? 0}</div>
+              <div className="text-4xl font-bold text-green-600">{totalGrowth}</div>
               <div className="text-sm text-gray-600">Growth</div>
               <div className="text-xs text-gray-500">0-6 scale</div>
             </div>
@@ -221,7 +226,7 @@ function AssessmentDetail() {
           )}
         </Card>
 
-        {/* Detailed Scores Grid */}
+        {/* Detailed Scores Grid - FIXED: Access contribution and growth separately */}
         <Card className="mb-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Detailed Scores</h3>
           
@@ -240,17 +245,17 @@ function AssessmentDetail() {
                   <td className="px-4 py-3 text-sm font-medium text-gray-900">Culture</td>
                   <td className="px-4 py-3 text-center">
                     <span className="inline-flex items-center justify-center w-10 h-10 bg-orange-100 text-orange-800 rounded-lg font-bold">
-                      {assessment.scores?.culture ?? 0}
+                      {assessment.scores?.culture?.contribution ?? 0}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center">
                     <span className="inline-flex items-center justify-center w-10 h-10 bg-green-100 text-green-800 rounded-lg font-bold">
-                      {assessment.scores?.mindset ?? 0}
+                      {assessment.scores?.culture?.growth ?? 0}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center">
                     <span className="text-lg font-bold text-gray-900">
-                      {(assessment.scores?.culture ?? 0) + (assessment.scores?.mindset ?? 0)}
+                      {(assessment.scores?.culture?.contribution ?? 0) + (assessment.scores?.culture?.growth ?? 0)}
                     </span>
                   </td>
                 </tr>
@@ -258,17 +263,17 @@ function AssessmentDetail() {
                   <td className="px-4 py-3 text-sm font-medium text-gray-900">Competencies</td>
                   <td className="px-4 py-3 text-center">
                     <span className="inline-flex items-center justify-center w-10 h-10 bg-orange-100 text-orange-800 rounded-lg font-bold">
-                      {assessment.scores?.competencies ?? 0}
+                      {assessment.scores?.competencies?.contribution ?? 0}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center">
                     <span className="inline-flex items-center justify-center w-10 h-10 bg-green-100 text-green-800 rounded-lg font-bold">
-                      {assessment.scores?.skillset ?? 0}
+                      {assessment.scores?.competencies?.growth ?? 0}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center">
                     <span className="text-lg font-bold text-gray-900">
-                      {(assessment.scores?.competencies ?? 0) + (assessment.scores?.skillset ?? 0)}
+                      {(assessment.scores?.competencies?.contribution ?? 0) + (assessment.scores?.competencies?.growth ?? 0)}
                     </span>
                   </td>
                 </tr>
@@ -276,17 +281,17 @@ function AssessmentDetail() {
                   <td className="px-4 py-3 text-sm font-medium text-gray-900">Execution</td>
                   <td className="px-4 py-3 text-center">
                     <span className="inline-flex items-center justify-center w-10 h-10 bg-orange-100 text-orange-800 rounded-lg font-bold">
-                      {assessment.scores?.execution ?? 0}
+                      {assessment.scores?.execution?.contribution ?? 0}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center">
                     <span className="inline-flex items-center justify-center w-10 h-10 bg-green-100 text-green-800 rounded-lg font-bold">
-                      {assessment.scores?.habits ?? 0}
+                      {assessment.scores?.execution?.growth ?? 0}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center">
                     <span className="text-lg font-bold text-gray-900">
-                      {(assessment.scores?.execution ?? 0) + (assessment.scores?.habits ?? 0)}
+                      {(assessment.scores?.execution?.contribution ?? 0) + (assessment.scores?.execution?.growth ?? 0)}
                     </span>
                   </td>
                 </tr>
@@ -295,55 +300,39 @@ function AssessmentDetail() {
           </div>
         </Card>
 
-        {/* Assessment Notes - 6-Box Layout */}
+        {/* Assessment Notes */}
         <Card className="mb-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Assessment Notes</h3>
           
           {/* Domain-Specific Notes (Top Row) */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Culture Notes</label>
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 min-h-[100px] text-sm text-gray-700 whitespace-pre-wrap">
+              <label className="block text-sm font-medium text-purple-700 mb-2">Culture Notes</label>
+              <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-3 min-h-[100px] text-sm text-gray-700 whitespace-pre-wrap">
                 {assessment.notes?.culture || 'No notes provided'}
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Competencies Notes</label>
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 min-h-[100px] text-sm text-gray-700 whitespace-pre-wrap">
+              <label className="block text-sm font-medium text-orange-700 mb-2">Competencies Notes</label>
+              <div className="bg-orange-50 border-2 border-orange-200 rounded-lg p-3 min-h-[100px] text-sm text-gray-700 whitespace-pre-wrap">
                 {assessment.notes?.competencies || 'No notes provided'}
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Execution Notes</label>
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 min-h-[100px] text-sm text-gray-700 whitespace-pre-wrap">
+              <label className="block text-sm font-medium text-green-700 mb-2">Execution Notes</label>
+              <div className="bg-green-50 border-2 border-green-200 rounded-lg p-3 min-h-[100px] text-sm text-gray-700 whitespace-pre-wrap">
                 {assessment.notes?.execution || 'No notes provided'}
               </div>
             </div>
           </div>
 
-          {/* Development Framework (Bottom Row) */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Key Strengths</label>
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 min-h-[100px] text-sm text-gray-700 whitespace-pre-wrap">
-                {assessment.notes?.strengths || 'No notes provided'}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Development Areas</label>
-              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 min-h-[100px] text-sm text-gray-700 whitespace-pre-wrap">
-                {assessment.notes?.developmentAreas || 'No notes provided'}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Action Items</label>
-              <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 min-h-[100px] text-sm text-gray-700 whitespace-pre-wrap">
-                {assessment.notes?.actionItems || 'No notes provided'}
-              </div>
+          {/* General Notes */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">General Notes / Overall Comments</label>
+            <div className="bg-gray-50 border-2 border-gray-200 rounded-lg p-3 min-h-[120px] text-sm text-gray-700 whitespace-pre-wrap">
+              {assessment.notes?.general || 'No general notes provided'}
             </div>
           </div>
         </Card>
@@ -389,6 +378,29 @@ function AssessmentDetail() {
                 </div>
               </div>
             )}
+          </div>
+        </Card>
+
+        {/* Metadata */}
+        <Card className="bg-gray-50">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Assessment Metadata</h3>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="text-gray-600">Assessment ID:</span>
+              <span className="ml-2 font-mono text-gray-900">{assessment.id}</span>
+            </div>
+            <div>
+              <span className="text-gray-600">Cycle:</span>
+              <span className="ml-2 font-semibold text-gray-900">{assessment.cycleMonth}/{assessment.cycleYear}</span>
+            </div>
+            <div>
+              <span className="text-gray-600">Created:</span>
+              <span className="ml-2 text-gray-900">{formatDate(assessment.createdAt)}</span>
+            </div>
+            <div>
+              <span className="text-gray-600">Completed:</span>
+              <span className="ml-2 text-gray-900">{formatDate(assessment.completedAt)}</span>
+            </div>
           </div>
         </Card>
 

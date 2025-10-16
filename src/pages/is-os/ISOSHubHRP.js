@@ -489,7 +489,7 @@ function ISOSHubHRP() {
               <div>
                 <h3 className="text-lg font-bold text-gray-900 mb-2">Reports & Analytics</h3>
                 <p className="text-sm text-gray-600">
-                  Organization-wide performance insights
+                  Organization-wide health insights
                 </p>
               </div>
               <TrendingUp className="w-8 h-8 text-purple-600" />

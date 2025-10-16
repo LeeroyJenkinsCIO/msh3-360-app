@@ -1,4 +1,4 @@
-// src/pages/is-os/ISOSHubHRP.jsx
+// src/pages/is-os/ISOSHubHRP.js
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';

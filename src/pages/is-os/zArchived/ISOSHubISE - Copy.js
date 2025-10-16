@@ -1,5 +1,5 @@
-// 📁 SAVE TO: src/pages/is-os/ISOSHubISE.js
-// FIXED VERSION - Changed assesseeId to subjectId, assesseeName to subjectName
+// 📍 SAVE TO: src/pages/is-os/ISOSHubISE.js
+// ISE Hub - Executive view with Gold Standard metrics
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -21,8 +21,10 @@ function ISOSHubISE() {
   const navigate = useNavigate();
   const location = useLocation();
   
+  // ==================== CONSTANTS ====================
   const CYCLE_START_DATE = new Date(2025, 9, 1);
   
+  // ==================== STATE ====================
   const [islMembers, setIslMembers] = useState([]);
   const [isfMembers, setIsfMembers] = useState([]);
   const [pillars, setPillars] = useState([]);
@@ -60,6 +62,7 @@ function ISOSHubISE() {
     pillarZones: { below: 0, baseline: 0, above: 0, exceptional: 0 }
   });
 
+  // ==================== HELPER FUNCTIONS ====================
   const calculateDeadline = (monthStart) => {
     let businessDays = 0;
     let currentDate = new Date(monthStart);
@@ -97,8 +100,7 @@ function ISOSHubISE() {
       assessmentType,
       currentMonthName,
       deadline,
-      isPastDeadline,
-      label: `Cycle ${cycleNumber} • Month ${cycleMonth} (${assessmentType})`
+      isPastDeadline
     };
   };
 
@@ -119,6 +121,20 @@ function ISOSHubISE() {
     return zones;
   };
 
+  const getPercentage = (count, total) => {
+    if (total === 0) return '0%';
+    return `${Math.round((count / total) * 100)}%`;
+  };
+
+  const getCompositeZoneName = (score) => {
+    if (score >= 11 && score <= 12) return 'Exceptional';
+    if (score >= 7 && score <= 10) return 'Above Baseline';
+    if (score >= 5 && score <= 6) return 'Baseline';
+    if (score >= 0 && score <= 4) return 'Below Baseline';
+    return 'Not Assessed';
+  };
+
+  // ==================== DATA FETCHING ====================
   useEffect(() => {
     const fetchOrgData = async () => {
       try {
@@ -128,28 +144,15 @@ function ISOSHubISE() {
         const currentMonth = now.getMonth() + 1;
         const currentYear = now.getFullYear();
         const cycleInfo = getCurrentCycleInfo(now);
-        
-        console.log('🔍 DEBUG: Starting data fetch');
-        console.log('  Current user ID:', user.uid);
-        console.log('  Current month:', currentMonth);
-        console.log('  Current year:', currentYear);
-        console.log('  Direct report IDs:', user.directReportIds);
-        
         const directReportIds = user.directReportIds || [];
         
         if (directReportIds.length === 0) {
-          console.log('⚠️ No direct reports found');
           setLoading(false);
           return;
         }
 
-        console.time('⚡ Data Fetch');
-        
-        const [
-          pillarsSnapshot,
-          allUsersSnapshot,
-          allAssessmentsSnapshot
-        ] = await Promise.all([
+        // Fetch all data in parallel
+        const [pillarsSnapshot, allUsersSnapshot, allAssessmentsSnapshot] = await Promise.all([
           getDocs(collection(db, 'pillars')),
           getDocs(collection(db, 'users')),
           getDocs(query(
@@ -159,20 +162,14 @@ function ISOSHubISE() {
           ))
         ]);
         
-        console.timeEnd('⚡ Data Fetch');
-        console.log('📊 Fetched data:');
-        console.log('  Pillars:', pillarsSnapshot.docs.length);
-        console.log('  Users:', allUsersSnapshot.docs.length);
-        console.log('  Assessments this month:', allAssessmentsSnapshot.docs.length);
-        
-        console.time('⚡ Data Processing');
-        
+        // Process pillars
         const pillarsData = pillarsSnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         }));
         setPillars(pillarsData);
         
+        // Build user maps
         const usersByUserId = {};
         const usersByLayer = { ISL: [], ISF: [] };
         const usersByPillar = {};
@@ -197,12 +194,8 @@ function ISOSHubISE() {
           }
         });
         
-        console.log('👥 Users by userId:', Object.keys(usersByUserId));
-        console.log('📋 Direct report IDs to match:', directReportIds);
-        
-        const assessmentsBySubject = {}; // ✅ FIXED: Changed from assessmentsByAssessee
-        
-        console.log('🔍 Processing assessments:');
+        // Group assessments by subject
+        const assessmentsBySubject = {};
         allAssessmentsSnapshot.docs.forEach(doc => {
           const assessmentData = {
             id: doc.id,
@@ -211,40 +204,20 @@ function ISOSHubISE() {
             completedAt: doc.data().completedAt?.toDate?.() || null
           };
           
-          const subjectId = assessmentData.subjectId; // ✅ FIXED: Changed from assesseeId
-          
-          console.log(`  Assessment ${doc.id}:`, {
-            subjectId,
-            assessorId: assessmentData.assessorId,
-            status: assessmentData.status,
-            completedAt: assessmentData.completedAt,
-            composite: assessmentData.composite
-          });
-          
+          const subjectId = assessmentData.subjectId;
           if (!assessmentsBySubject[subjectId]) {
             assessmentsBySubject[subjectId] = [];
           }
           assessmentsBySubject[subjectId].push(assessmentData);
         });
         
-        console.log('📦 Assessments grouped by subject:', Object.keys(assessmentsBySubject));
-        
+        // Build ISL members list
         const members = [];
-        
-        console.log('🔄 Building member list with assessments:');
         for (const islId of directReportIds) {
-          console.log(`\n🔍 Processing ISL: ${islId}`);
           const islData = usersByUserId[islId];
-          
-          if (!islData) {
-            console.log('  ❌ User data not found');
-            continue;
-          }
-          
-          console.log('  ✅ User found:', islData.displayName);
+          if (!islData) continue;
           
           const pillar = pillarsData.find(p => p.pillarLeaderId === islId);
-          
           let teamSize = 0;
           if (pillar && usersByPillar[pillar.pillarId]) {
             teamSize = usersByPillar[pillar.pillarId].filter(
@@ -252,57 +225,32 @@ function ISOSHubISE() {
             ).length;
           }
           
+          // Find current assessment
           let currentAssessment = null;
-          const islAssessments = assessmentsBySubject[islId] || []; // ✅ FIXED: Changed variable name
-          
-          console.log(`  📋 Assessments for this user: ${islAssessments.length}`);
-          
-          islAssessments.forEach((a, idx) => {
-            console.log(`    [${idx}] Status: ${a.status}, Assessor: ${a.assessorId}, Completed: ${a.completedAt ? 'Yes' : 'No'}`);
-          });
+          const islAssessments = assessmentsBySubject[islId] || [];
           
           const pendingAssessment = islAssessments.find(a => a.status === 'pending');
-          
           if (pendingAssessment) {
-            console.log('  ✅ Found pending assessment');
             currentAssessment = pendingAssessment;
           } else {
             const completedAssessments = islAssessments
               .filter(a => {
-                const hasCompletedAt = !!a.completedAt;
-                const assessorMatches = a.assessorId === user.uid;
-                const statusGood = a.status === 'completed' || a.status === 'not-aligned';
-                
-                console.log(`    Filtering assessment ${a.id}:`, {
-                  hasCompletedAt,
-                  assessorMatches,
-                  statusGood,
-                  passes: hasCompletedAt && assessorMatches && statusGood
-                });
-                
-                return hasCompletedAt && assessorMatches && statusGood;
+                return a.completedAt && 
+                       a.assessorId === user.uid && 
+                       (a.status === 'completed' || a.status === 'not-aligned');
               })
               .sort((a, b) => b.completedAt - a.completedAt);
-            
-            console.log(`  📊 Completed assessments found: ${completedAssessments.length}`);
             
             if (completedAssessments.length > 0) {
               const latest = completedAssessments[0];
               const completedMonth = latest.completedAt.getMonth() + 1;
               const completedYear = latest.completedAt.getFullYear();
               
-              console.log(`    Latest completed: Month ${completedMonth}/${completedYear}, Current: ${currentMonth}/${currentYear}`);
-              
               if (completedMonth === currentMonth && completedYear === currentYear) {
-                console.log('  ✅ Using latest completed assessment');
                 currentAssessment = latest;
-              } else {
-                console.log('  ⚠️ Latest completed assessment is from different month');
               }
             }
           }
-          
-          console.log(`  🎯 Final assessment status: ${currentAssessment ? currentAssessment.status : 'None'}`);
           
           members.push({
             id: islId,
@@ -316,15 +264,9 @@ function ISOSHubISE() {
           });
         }
         
-        console.log('\n✅ Final member list:', members.map(m => ({
-          name: m.name,
-          hasAssessment: !!m.currentAssessment,
-          status: m.currentAssessment?.status,
-          composite: m.currentAssessment?.composite
-        })));
-        
         setIslMembers(members);
         
+        // Build ISF members list
         const isfMembersList = usersByLayer.ISF.map(userData => ({
           id: userData.id,
           userId: userData.userId,
@@ -336,12 +278,12 @@ function ISOSHubISE() {
         
         setIsfMembers(isfMembersList);
         
-        // ISE assessment calculation
+        // Calculate ISE assessment
         let iseAssessment = null;
         let iseLastAssessed = null;
         let iseComposite = null;
         
-        const iseAssessments = assessmentsBySubject[user.uid] || []; // ✅ FIXED
+        const iseAssessments = assessmentsBySubject[user.uid] || [];
         const sortedIseAssessments = iseAssessments
           .filter(a => a.composite && (a.status === 'completed' || a.status === 'not-aligned'))
           .sort((a, b) => {
@@ -365,6 +307,7 @@ function ISOSHubISE() {
           }
         }
         
+        // Calculate ISL metrics
         const islThisMonth = members.filter(m => {
           if (!m.currentAssessment?.completedAt) return false;
           const assessmentMonth = m.currentAssessment.completedAt.getMonth() + 1;
@@ -378,6 +321,7 @@ function ISOSHubISE() {
         
         const islScoresThisMonth = islThisMonth.map(m => m.currentAssessment.composite);
         
+        // Include ISE score if it's a 360 month and completed this month
         if (cycleInfo.cycleMonth === 3 && iseAssessment && iseAssessment.completedAt) {
           const iseMonth = iseAssessment.completedAt.getMonth() + 1;
           const iseYear = iseAssessment.completedAt.getFullYear();
@@ -393,6 +337,7 @@ function ISOSHubISE() {
         const islZones = calculateZoneDistribution(islScoresThisMonth);
         const islTotalThisMonth = cycleInfo.cycleMonth === 3 ? 6 : 5;
         
+        // Calculate ISF metrics
         const pillarISFCounts = {};
         isfMembersList.forEach(isf => {
           const pillarId = isf.pillar;
@@ -405,10 +350,8 @@ function ISOSHubISE() {
         const totalISFMembers = isfMembersList.length;
         
         const isfScoresThisMonth = [];
-        
         isfMembersList.forEach(isf => {
-          const isfAssessments = assessmentsBySubject[isf.userId] || []; // ✅ FIXED
-          
+          const isfAssessments = assessmentsBySubject[isf.userId] || [];
           const latestCompleted = isfAssessments
             .filter(a => 
               a.composite && 
@@ -432,6 +375,7 @@ function ISOSHubISE() {
         
         const pillarZones = calculateZoneDistribution(isfScoresThisMonth);
         
+        // Calculate Gold Standard components
         const islLatestScores = [];
         members.forEach(m => {
           if (m.currentAssessment?.composite && 
@@ -450,7 +394,7 @@ function ISOSHubISE() {
         
         const isfLatestScores = [];
         isfMembersList.forEach(isf => {
-          const isfAssessments = assessmentsBySubject[isf.userId] || []; // ✅ FIXED
+          const isfAssessments = assessmentsBySubject[isf.userId] || [];
           const latestCompleted = isfAssessments
             .filter(a => a.composite && (a.status === 'completed' || a.status === 'not-aligned'))
             .sort((a, b) => {
@@ -468,6 +412,7 @@ function ISOSHubISE() {
           ? (isfLatestScores.reduce((a, b) => a + b, 0) / isfLatestScores.length)
           : 0;
         
+        // Calculate pillar composites
         const pillarScores = {};
         const isfByPillar = {};
         isfMembersList.forEach(isf => {
@@ -484,7 +429,7 @@ function ISOSHubISE() {
           const pillarComposites = [];
           
           memberIds.forEach(memberId => {
-            const memberAssessments = assessmentsBySubject[memberId] || []; // ✅ FIXED
+            const memberAssessments = assessmentsBySubject[memberId] || [];
             const latestCompleted = memberAssessments
               .filter(a => a.composite && (a.status === 'completed' || a.status === 'not-aligned'))
               .sort((a, b) => {
@@ -521,6 +466,7 @@ function ISOSHubISE() {
         
         setPillarComposites(pillarScores);
         
+        // Calculate final Gold Standard
         const goldStandardScore = (islHealthForGS * 0.40) + (isfHealthForGS * 0.60);
         const allLatestScores = [...islLatestScores, ...isfLatestScores];
         const goldStandardZones = calculateZoneDistribution(allLatestScores);
@@ -567,8 +513,6 @@ function ISOSHubISE() {
           totalISFMembers,
           pillarZones
         });
-        
-        console.timeEnd('⚡ Data Processing');
 
       } catch (error) {
         console.error('Error fetching org data:', error);
@@ -580,6 +524,7 @@ function ISOSHubISE() {
     fetchOrgData();
   }, [user.uid, location.key]);
 
+  // ==================== EVENT HANDLERS ====================
   const handleViewAssessment = (assessmentId) => {
     navigate(`/is-os/assessments/view/${assessmentId}`);
   };
@@ -602,19 +547,7 @@ function ISOSHubISE() {
     return isfMembers.filter(member => member.pillar === pillar.pillarId).length;
   };
 
-  const getPercentage = (count, total) => {
-    if (total === 0) return '0%';
-    return `${Math.round((count / total) * 100)}%`;
-  };
-
-  const getCompositeZoneName = (score) => {
-    if (score >= 11 && score <= 12) return 'Exceptional';
-    if (score >= 7 && score <= 10) return 'Above Baseline';
-    if (score >= 5 && score <= 6) return 'Baseline';
-    if (score >= 0 && score <= 4) return 'Below Baseline';
-    return 'Not Assessed';
-  };
-
+  // ==================== RENDER ====================
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -629,6 +562,7 @@ function ISOSHubISE() {
   return (
     <div className="min-h-screen bg-gray-50">
       
+      {/* ==================== HERO BANNER ==================== */}
       <div className="bg-gradient-to-r from-purple-600 via-blue-600 to-indigo-600 text-white">
         <div className="max-w-7xl mx-auto px-6 py-8">
           <div className="flex items-center gap-3 mb-6">
@@ -687,10 +621,12 @@ function ISOSHubISE() {
 
       <div className="max-w-7xl mx-auto px-6 py-8">
         
+        {/* ==================== EXECUTIVE METRICS (ROW 1) ==================== */}
         <div className="mb-8">
           <h2 className="text-lg font-semibold text-gray-700 mb-4">Executive Metrics</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             
+            {/* Gold Standard Card */}
             <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-2 border-blue-200">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
@@ -755,6 +691,7 @@ function ISOSHubISE() {
               </div>
             </Card>
 
+            {/* ISL Leadership Card */}
             <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
@@ -840,6 +777,7 @@ function ISOSHubISE() {
               </div>
             </Card>
 
+            {/* Composite Pillar Health Card */}
             <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
@@ -902,6 +840,7 @@ function ISOSHubISE() {
           </div>
         </div>
         
+        {/* ==================== PILLAR OVERVIEW (ROW 2) ==================== */}
         <div className="mb-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Pillar Overview</h2>
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -943,6 +882,7 @@ function ISOSHubISE() {
           </div>
         </div>
 
+        {/* ==================== ASSESSMENT CYCLE GRID ==================== */}
         <AssessmentCycleGrid
           members={islMembers}
           assessmentType={metrics.assessmentType}
@@ -956,6 +896,7 @@ function ISOSHubISE() {
           showHRPColumn={true}
         />
 
+        {/* ==================== QUICK ACTIONS ==================== */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="bg-gradient-to-br from-blue-50 to-cyan-50">
             <div className="flex items-start justify-between mb-4">

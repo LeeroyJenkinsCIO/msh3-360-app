@@ -1,5 +1,5 @@
-// src/pages/is-os/AssessmentHistory.jsx
-// FIXED VERSION - Corrected freeze pane behavior
+// 📁 SAVE TO: src/pages/is-os/AssessmentHistory.jsx
+// FIXED VERSION - Improved freeze pane to match AssessmentCycleGrid
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -297,51 +297,51 @@ function AssessmentHistory() {
           </Card>
         ) : (
           <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="overflow-x-auto relative">
-              <table className="w-full relative" style={{ minWidth: '1400px' }}>
-                <thead className="bg-gray-50 border-b border-gray-200">
+            <div className="overflow-x-auto">
+              <table className="min-w-full">
+                <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
-                    <th className="sticky left-0 z-30 px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 border-r border-gray-200" style={{ boxShadow: '2px 0 5px -2px rgba(0,0,0,0.1)' }}>
+                    <th className="sticky left-0 z-20 bg-gray-50 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200" style={{minWidth: '100px'}}>
                       Action
                     </th>
-                    <th className="sticky left-[110px] z-30 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 border-r border-gray-200" style={{ boxShadow: '2px 0 5px -2px rgba(0,0,0,0.1)' }}>
+                    <th className="sticky left-[100px] z-20 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200" style={{minWidth: '100px'}}>
                       MSH ID
                     </th>
-                    <th className="sticky left-[210px] z-30 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 border-r-4 border-blue-400" style={{ boxShadow: '3px 0 8px -2px rgba(0,0,0,0.15)' }}>
+                    <th className="sticky left-[200px] z-20 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r-4 border-blue-400" style={{minWidth: '200px'}}>
                       Assessee
                     </th>
 
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
                       Assessor
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
                       Type
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
                       Nine-Box
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
                       Status
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
                       HRP
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
                       Pillar
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
                       Sub Pillar
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
                       Composite
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
                       Contrib
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
                       Growth
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
                       Date
                     </th>
                   </tr>
@@ -351,9 +351,9 @@ function AssessmentHistory() {
                     const totals = calculateTotals(assessment.scores);
                     
                     return (
-                      <tr key={assessment.id} className="hover:bg-gray-50 group">
+                      <tr key={assessment.id} className="hover:bg-gray-50 transition-colors">
                         
-                        <td className="sticky left-0 z-20 px-4 py-4 text-center bg-white group-hover:bg-gray-50 border-r border-gray-200" style={{ boxShadow: '2px 0 5px -2px rgba(0,0,0,0.1)' }}>
+                        <td className="sticky left-0 z-10 bg-white px-4 py-4 text-center border-r border-gray-200 group-hover:bg-gray-50" style={{minWidth: '100px'}}>
                           <Button
                             variant="secondary"
                             size="sm"
@@ -364,28 +364,28 @@ function AssessmentHistory() {
                           </Button>
                         </td>
 
-                        <td className="sticky left-[110px] z-20 px-4 py-4 whitespace-nowrap bg-white group-hover:bg-gray-50 border-r border-gray-200" style={{ boxShadow: '2px 0 5px -2px rgba(0,0,0,0.1)' }}>
+                        <td className="sticky left-[100px] z-10 bg-white px-4 py-4 whitespace-nowrap border-r border-gray-200 group-hover:bg-gray-50" style={{minWidth: '100px'}}>
                           <Badge variant="primary" className="text-xs font-mono">
                             {assessment.mshId || 'N/A'}
                           </Badge>
                         </td>
 
-                        <td className="sticky left-[210px] z-20 px-4 py-4 whitespace-nowrap bg-white group-hover:bg-gray-50 border-r-4 border-blue-400" style={{ boxShadow: '3px 0 8px -2px rgba(0,0,0,0.15)' }}>
+                        <td className="sticky left-[200px] z-10 bg-white px-4 py-4 whitespace-nowrap border-r-4 border-blue-400 group-hover:bg-gray-50" style={{minWidth: '200px'}}>
                           <div className="text-sm font-medium text-gray-900">{assessment.subjectName}</div>
                           <div className="text-xs text-gray-500">{assessment.subjectLayer}</div>
                         </td>
 
-                        <td className="px-4 py-4 whitespace-nowrap bg-white group-hover:bg-gray-50">
+                        <td className="px-4 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">{assessment.assessorName}</div>
                         </td>
 
-                        <td className="px-4 py-4 whitespace-nowrap bg-white group-hover:bg-gray-50">
+                        <td className="px-4 py-4 whitespace-nowrap">
                           <Badge variant="secondary" className="text-xs">
                             {assessment.assessmentType === '360' || assessment.type === '360' ? '360' : '1x1'}
                           </Badge>
                         </td>
 
-                        <td className="px-4 py-4 text-center bg-white group-hover:bg-gray-50">
+                        <td className="px-4 py-4 text-center">
                           {assessment.nineBoxPosition ? (
                             <Badge variant="secondary" className="text-xs whitespace-nowrap">
                               {assessment.nineBoxPosition}
@@ -395,7 +395,7 @@ function AssessmentHistory() {
                           )}
                         </td>
 
-                        <td className="px-4 py-4 text-center bg-white group-hover:bg-gray-50">
+                        <td className="px-4 py-4 text-center">
                           {assessment.alignmentStatus === 'aligned' || assessment.status === 'completed' ? (
                             <Badge variant="success" className="text-xs">
                               <CheckCircle className="w-3 h-3 mr-1" />
@@ -409,7 +409,7 @@ function AssessmentHistory() {
                           )}
                         </td>
 
-                        <td className="px-4 py-4 text-center bg-white group-hover:bg-gray-50">
+                        <td className="px-4 py-4 text-center">
                           {assessment.hrpReviewedAt ? (
                             <Badge variant="success" className="bg-green-100 text-green-800 text-xs">
                               <CheckCircle className="w-3 h-3 mr-1" />
@@ -424,7 +424,7 @@ function AssessmentHistory() {
                           )}
                         </td>
 
-                        <td className="px-4 py-4 whitespace-nowrap bg-white group-hover:bg-gray-50">
+                        <td className="px-4 py-4 whitespace-nowrap">
                           <div 
                             className="text-sm text-gray-900 font-mono font-semibold cursor-help" 
                             title={getPillarDisplayName(assessment.subjectPillar)}
@@ -433,34 +433,34 @@ function AssessmentHistory() {
                           </div>
                         </td>
 
-                        <td className="px-4 py-4 whitespace-nowrap bg-white group-hover:bg-gray-50">
+                        <td className="px-4 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-500">
                             {getSubPillarDisplayName(assessment.subjectSubPillar || assessment.subPillar)}
                           </div>
                         </td>
 
-                        <td className="px-4 py-4 whitespace-nowrap text-center bg-white group-hover:bg-gray-50">
+                        <td className="px-4 py-4 whitespace-nowrap text-center">
                           <span className="text-lg font-bold text-blue-600">
                             {assessment.composite || 0}
                           </span>
                           <span className="text-xs text-gray-500">/12</span>
                         </td>
 
-                        <td className="px-4 py-4 whitespace-nowrap text-center bg-white group-hover:bg-gray-50">
+                        <td className="px-4 py-4 whitespace-nowrap text-center">
                           <span className="text-sm font-semibold text-orange-600">
                             {totals.totalContribution}
                           </span>
                           <span className="text-xs text-gray-500">/6</span>
                         </td>
 
-                        <td className="px-4 py-4 whitespace-nowrap text-center bg-white group-hover:bg-gray-50">
+                        <td className="px-4 py-4 whitespace-nowrap text-center">
                           <span className="text-sm font-semibold text-green-600">
                             {totals.totalGrowth}
                           </span>
                           <span className="text-xs text-gray-500">/6</span>
                         </td>
 
-                        <td className="px-4 py-4 whitespace-nowrap bg-white group-hover:bg-gray-50">
+                        <td className="px-4 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">
                             {assessment.completedAt?.toLocaleDateString('en-US', { 
                               month: 'short', 

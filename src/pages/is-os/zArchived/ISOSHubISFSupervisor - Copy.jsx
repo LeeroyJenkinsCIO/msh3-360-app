@@ -1,29 +1,30 @@
-// src/pages/is-os/ISOSHubISFSupervisor.jsx
+// 📍 SAVE TO: src/pages/is-os/ISOSHubISFSupervisor.jsx
+// ISF Supervisor Hub - Team supervisor view with direct reports
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { 
-  Calendar, Zap, Users, ArrowRight, 
-  TrendingUp, Award, User, Target, CheckCircle, Eye, Edit, AlertTriangle
+  Calendar, Zap, ArrowRight, 
+  TrendingUp, Award, User, Users, Target, CheckCircle, AlertTriangle
 } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
-import Badge from '../../components/ui/Badge';
 import { useAuth } from '../../contexts/AuthContext';
+import AssessmentCycleGrid from '../../components/hubs/AssessmentCycleGrid';
 
 function ISOSHubISFSupervisor() {
   const { user } = useAuth();
   const navigate = useNavigate();
   
-  // Cycle start date: October 1, 2025
+  // ==================== CONSTANTS ====================
   const CYCLE_START_DATE = new Date(2025, 9, 1);
   
-  // State
-  const [directReports, setDirectReports] = useState([]);
+  // ==================== STATE ====================
+  const [gridMembers, setGridMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState({
-    // Cycle Info
     cycleNumber: 1,
     cycleInYear: 1,
     cycleMonth: 1,
@@ -33,26 +34,19 @@ function ISOSHubISFSupervisor() {
     isPastDeadline: false,
     totalAssessmentsNeeded: 0,
     completedAssessments: 0,
-    
-    // My Performance (from ISL/manager)
     myLastAssessment: null,
     myComposite: null,
     myLastAssessed: null,
-    myPosition: 'Not Assessed',
-    
-    // Team Health
     teamAvgComposite: 0,
+    teamTier: 'Low',
+    teamTrend: 'stable',
     teamSize: 0,
     teamZones: { below: 0, baseline: 0, above: 0, exceptional: 0 },
-    teamBucketLabel: 'Below Baseline',
-    teamBucketClassName: 'bg-red-100 text-red-800 border-red-300',
-    
-    // Monthly Progress
     assessedThisMonth: 0,
     alignmentRate: 0
   });
 
-  // Helper function to calculate 5 business days from start of month
+  // ==================== HELPER FUNCTIONS ====================
   const calculateDeadline = (monthStart) => {
     let businessDays = 0;
     let currentDate = new Date(monthStart);
@@ -68,7 +62,6 @@ function ISOSHubISFSupervisor() {
     return currentDate;
   };
 
-  // Helper function to get current cycle info
   const getCurrentCycleInfo = (date = new Date()) => {
     const monthsSinceStart = (date.getFullYear() - CYCLE_START_DATE.getFullYear()) * 12 + 
                              (date.getMonth() - CYCLE_START_DATE.getMonth());
@@ -95,7 +88,6 @@ function ISOSHubISFSupervisor() {
     };
   };
 
-  // Helper function to categorize composite scores into 4 zones
   const getCompositeZone = (score) => {
     if (score >= 0 && score <= 4) return 'below';
     if (score >= 5 && score <= 6) return 'baseline';
@@ -104,7 +96,6 @@ function ISOSHubISFSupervisor() {
     return 'baseline';
   };
 
-  // Helper function to calculate zone distribution
   const calculateZoneDistribution = (scores) => {
     const zones = { below: 0, baseline: 0, above: 0, exceptional: 0 };
     scores.forEach(score => {
@@ -114,13 +105,11 @@ function ISOSHubISFSupervisor() {
     return zones;
   };
 
-  // Helper to calculate percentage
   const getPercentage = (count, total) => {
     if (total === 0) return '0%';
     return `${Math.round((count / total) * 100)}%`;
   };
 
-  // Helper function to get zone name from composite score
   const getCompositeZoneName = (score) => {
     if (score >= 11 && score <= 12) return 'Exceptional';
     if (score >= 7 && score <= 10) return 'Above Baseline';
@@ -129,192 +118,183 @@ function ISOSHubISFSupervisor() {
     return 'Not Assessed';
   };
 
-  // Helper function to get bucket badge styling
-  const getBucketBadgeStyle = (avgComposite) => {
-    if (avgComposite >= 11) {
-      return {
-        label: 'Exceptional',
-        className: 'bg-blue-100 text-blue-800 border-blue-300'
-      };
-    }
-    if (avgComposite >= 7) {
-      return {
-        label: 'Above Baseline',
-        className: 'bg-green-100 text-green-800 border-green-300'
-      };
-    }
-    if (avgComposite >= 5) {
-      return {
-        label: 'Baseline',
-        className: 'bg-yellow-100 text-yellow-800 border-yellow-300'
-      };
-    }
-    return {
-      label: 'Below Baseline',
-      className: 'bg-red-100 text-red-800 border-red-300'
-    };
-  };
-
+  // ==================== DATA FETCHING ====================
   useEffect(() => {
     const fetchSupervisorData = async () => {
       try {
         setLoading(true);
-        
-        console.log('🔍 Supervisor Loading data for:', user.displayName);
         
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
         const cycleInfo = getCurrentCycleInfo(now);
         
-        console.log(`📅 Current Cycle: Cycle ${cycleInfo.cycleInYear} of 4 • ${cycleInfo.assessmentType}`);
-        console.log(`📅 Deadline: ${cycleInfo.deadline.toLocaleDateString()}`);
-        console.log(`⚠️ Past Deadline: ${cycleInfo.isPastDeadline}`);
+        // Fetch all data in parallel
+        const [allUsersSnapshot, allAssessmentsSnapshot] = await Promise.all([
+          getDocs(collection(db, 'users')),
+          getDocs(query(
+            collection(db, 'assessments'),
+            where('cycleMonth', '==', currentMonth + 1),
+            where('cycleYear', '==', currentYear)
+          ))
+        ]);
         
-        // Fetch direct reports (ISF members reporting to this supervisor)
+        // Build user maps
+        const allUsersMap = {};
+        const userIdToAuthUid = {};
+        
+        allUsersSnapshot.docs.forEach(doc => {
+          const userData = doc.data();
+          allUsersMap[userData.userId] = userData.displayName || 'Unknown';
+          if (userData.userId && doc.id) {
+            userIdToAuthUid[userData.userId] = doc.id;
+          }
+        });
+        
+        // Group assessments by subject
+        const assessmentsBySubject = {};
+        allAssessmentsSnapshot.docs.forEach(doc => {
+          const assessmentData = {
+            id: doc.id,
+            ...doc.data(),
+            createdAt: doc.data().createdAt?.toDate?.() || null,
+            completedAt: doc.data().completedAt?.toDate?.() || null
+          };
+          
+          const subjectId = assessmentData.subjectId;
+          if (!assessmentsBySubject[subjectId]) {
+            assessmentsBySubject[subjectId] = [];
+          }
+          assessmentsBySubject[subjectId].push(assessmentData);
+        });
+        
+        // Get direct reports (ISF members managed by this supervisor)
         const usersRef = collection(db, 'users');
         const directReportsQuery = query(
           usersRef,
           where('managerId', '==', user.userId)
         );
+        const membersSnapshot = await getDocs(directReportsQuery);
         
-        const directReportsSnapshot = await getDocs(directReportsQuery);
-        console.log('📊 Found', directReportsSnapshot.docs.length, 'direct reports');
+        const allMembers = [];
         
-        const reportsData = await Promise.all(
-          directReportsSnapshot.docs.map(async (doc) => {
-            const memberData = doc.data();
-            
-            // Get this member's assessments from supervisor
-            const assessmentsRef = collection(db, 'assessments');
-            const memberAssessmentsQuery = query(
-              assessmentsRef,
-              where('assesseeId', '==', memberData.userId),
-              where('assessorId', '==', user.userId)
-            );
-            
-            const memberAssessmentsSnapshot = await getDocs(memberAssessmentsQuery);
-            
-            // Sort in memory
-            const sortedAssessments = memberAssessmentsSnapshot.docs.sort((a, b) => {
-              const aTime = a.data().createdAt?.toDate?.() || new Date(0);
-              const bTime = b.data().createdAt?.toDate?.() || new Date(0);
+        for (const doc of membersSnapshot.docs) {
+          const memberData = doc.data();
+          
+          // Get member's Firebase auth UID
+          const memberAuthUid = userIdToAuthUid[memberData.userId];
+          if (!memberAuthUid) continue;
+          
+          // Get assessments for this member
+          const memberAssessments = assessmentsBySubject[memberAuthUid] || [];
+          
+          let latestAssessment = null;
+          
+          if (memberAssessments.length > 0) {
+            const sortedAssessments = memberAssessments.sort((a, b) => {
+              const aTime = a.createdAt || new Date(0);
+              const bTime = b.createdAt || new Date(0);
               return bTime - aTime;
             });
             
-            const latestAssessment = sortedAssessments.length > 0
-              ? {
-                  ...sortedAssessments[0].data(),
-                  id: sortedAssessments[0].id,
-                  completedAt: sortedAssessments[0].data().completedAt?.toDate?.() || null,
-                  createdAt: sortedAssessments[0].data().createdAt?.toDate?.() || null
-                }
-              : null;
+            // Look for pending assessment first
+            const pendingAssessment = sortedAssessments.find(a => a.status === 'pending');
+            
+            if (pendingAssessment) {
+              latestAssessment = pendingAssessment;
+            } else {
+              // Look for completed assessments by this supervisor
+              const completedAssessments = sortedAssessments
+                .filter(a => {
+                  return a.completedAt && 
+                         a.assessorId === user.uid && 
+                         (a.status === 'completed' || a.status === 'not-aligned');
+                })
+                .sort((a, b) => b.completedAt - a.completedAt);
+              
+              if (completedAssessments.length > 0) {
+                latestAssessment = completedAssessments[0];
+              }
+            }
+          }
 
-            return {
-              id: memberData.userId,
-              name: memberData.displayName || 'Unknown',
-              email: memberData.email || '',
-              pillarRole: memberData.pillarRole || 'Team Member',
-              subPillar: memberData.subPillar || 'Unassigned',
-              lastAssessment: latestAssessment
-            };
-          })
-        );
+          const memberInfo = {
+            id: memberData.userId,
+            name: memberData.displayName || 'Unknown',
+            email: memberData.email || '',
+            layer: memberData.layer || 'ISF',
+            pillarRole: memberData.pillarRole || 'Team Member',
+            subPillar: memberData.subPillar || 'Unassigned',
+            pillarId: memberData.pillar || null,
+            managerId: memberData.managerId,
+            assessorName: user.displayName,
+            isSupervisor: memberData.flags?.isSupervisor || false,
+            isDirectReport: true,
+            currentAssessment: latestAssessment,
+            teamSize: 0
+          };
+          
+          allMembers.push(memberInfo);
+        }
         
-        setDirectReports(reportsData);
-        console.log(`👥 Loaded ${reportsData.length} direct reports`);
+        setGridMembers(allMembers);
         
-        // ========================================
-        // GET SUPERVISOR'S OWN ASSESSMENT (from ISL/manager)
-        // ========================================
-        
+        // Get supervisor's own assessment (from their manager/ISL)
         let myLastAssessment = null;
         let myComposite = null;
         let myLastAssessed = null;
-        let myPosition = 'Not Assessed';
         
-        console.log('👤 Fetching supervisor own assessment...');
-        
-        const myAssessmentsQuery = query(
-          collection(db, 'assessments'),
-          where('assesseeId', '==', user.userId)
-        );
-        const myAssessmentSnapshot = await getDocs(myAssessmentsQuery);
-        
-        console.log(`  Found ${myAssessmentSnapshot.docs.length} assessments for supervisor`);
-        
-        if (!myAssessmentSnapshot.empty) {
-          const sortedMyAssessments = myAssessmentSnapshot.docs.sort((a, b) => {
-            const aTime = a.data().createdAt?.toDate?.() || new Date(0);
-            const bTime = b.data().createdAt?.toDate?.() || new Date(0);
+        const myAssessments = assessmentsBySubject[user.uid] || [];
+        const sortedMyAssessments = myAssessments
+          .filter(a => a.composite && (a.status === 'completed' || a.status === 'not-aligned'))
+          .sort((a, b) => {
+            const aTime = a.createdAt || new Date(0);
+            const bTime = b.createdAt || new Date(0);
             return bTime - aTime;
           });
-          
-          for (const doc of sortedMyAssessments) {
-            const data = doc.data();
-            console.log(`  Assessment status: ${data.status}, composite: ${data.composite}`);
-            
-            if (data.composite && (data.status === 'completed' || data.status === 'not-aligned')) {
-              myLastAssessment = {
-                ...data,
-                id: doc.id,
-                completedAt: data.completedAt?.toDate?.() || null
-              };
-              myComposite = data.composite;
-              myPosition = data.nineBoxPosition || 'Not Assessed';
-              if (myLastAssessment.completedAt) {
-                const date = myLastAssessment.completedAt;
-                myLastAssessed = `${date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`;
-              }
-              console.log(`  ✅ Supervisor Assessment found: ${myComposite} (${myLastAssessed})`);
-              break;
-            }
+        
+        if (sortedMyAssessments.length > 0) {
+          const latest = sortedMyAssessments[0];
+          myLastAssessment = latest;
+          myComposite = latest.composite;
+          if (latest.completedAt) {
+            myLastAssessed = `${latest.completedAt.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`;
           }
         }
-        
-        if (!myLastAssessed) {
-          console.log('  ⚠️ No published supervisor assessment found');
-        }
 
-        // ========================================
-        // CALCULATE METRICS
-        // ========================================
-
-        // Team Health (direct reports only)
-        const publishedAssessments = reportsData.filter(m => 
-          m.lastAssessment?.composite !== undefined && 
-          (m.lastAssessment.status === 'completed' || m.lastAssessment.status === 'not-aligned')
+        // Calculate team metrics
+        const publishedAssessments = allMembers.filter(m => 
+          m.currentAssessment?.composite !== undefined && 
+          (m.currentAssessment.status === 'completed' || m.currentAssessment.status === 'not-aligned')
         );
         
-        const teamScores = publishedAssessments.map(m => m.lastAssessment.composite);
+        const teamScores = publishedAssessments.map(m => m.currentAssessment.composite);
         const teamAvgComposite = teamScores.length > 0
           ? (teamScores.reduce((sum, score) => sum + score, 0) / teamScores.length)
           : 0;
 
         const teamZones = calculateZoneDistribution(teamScores);
 
-        // Get bucket badge for team average
-        const teamBucketInfo = getBucketBadgeStyle(teamAvgComposite);
+        let teamTier = 'Low';
+        if (teamAvgComposite >= 9) teamTier = 'High';
+        else if (teamAvgComposite >= 5) teamTier = 'Mid';
 
-        // Monthly Progress
-        const assessedThisMonth = reportsData.filter(m => {
-          if (!m.lastAssessment?.completedAt) return false;
-          const assessmentDate = m.lastAssessment.completedAt;
+        const assessedThisMonth = allMembers.filter(m => {
+          if (!m.currentAssessment?.completedAt) return false;
+          const assessmentDate = m.currentAssessment.completedAt;
           return assessmentDate.getMonth() === currentMonth && 
                  assessmentDate.getFullYear() === currentYear &&
-                 (m.lastAssessment.status === 'completed' || m.lastAssessment.status === 'not-aligned');
+                 (m.currentAssessment.status === 'completed' || m.currentAssessment.status === 'not-aligned');
         }).length;
 
-        // Alignment rate
         const alignedMembers = publishedAssessments.filter(m => 
-          m.lastAssessment.alignmentStatus === 'aligned'
+          m.currentAssessment.alignmentStatus === 'aligned'
         ).length;
         const alignmentRate = publishedAssessments.length > 0
           ? Math.round((alignedMembers / publishedAssessments.length) * 100)
           : 0;
 
-        const totalAssessmentsNeeded = reportsData.length;
+        const totalAssessmentsNeeded = allMembers.length;
         const completedAssessments = assessedThisMonth;
 
         setMetrics({
@@ -327,29 +307,20 @@ function ISOSHubISFSupervisor() {
           isPastDeadline: cycleInfo.isPastDeadline,
           totalAssessmentsNeeded,
           completedAssessments,
-          
           myLastAssessment,
           myComposite,
           myLastAssessed,
-          myPosition,
-          
           teamAvgComposite: teamAvgComposite.toFixed(1),
-          teamSize: reportsData.length,
+          teamTier,
+          teamTrend: 'stable',
+          teamSize: allMembers.length,
           teamZones,
-          teamBucketLabel: teamBucketInfo.label,
-          teamBucketClassName: teamBucketInfo.className,
-          
           assessedThisMonth,
           alignmentRate
         });
 
-        console.log(`✅ Metrics calculated:`);
-        console.log(`  Team: ${reportsData.length} members, avg ${teamAvgComposite.toFixed(1)} (${teamBucketInfo.label})`);
-        console.log(`  Progress: ${completedAssessments}/${totalAssessmentsNeeded} this month`);
-        console.log(`  Supervisor: ${myComposite || 'Not assessed'}`);
-        
       } catch (error) {
-        console.error('❌ Error fetching supervisor data:', error);
+        console.error('Error fetching supervisor data:', error);
       } finally {
         setLoading(false);
       }
@@ -358,56 +329,28 @@ function ISOSHubISFSupervisor() {
     fetchSupervisorData();
   }, [user.userId]);
 
-  const handleStartAssessment = (member) => {
-    navigate(`/is-os/assessments/1x1/new?assessee=${member.id}`);
-  };
-
-  const handleContinueDraft = (assessmentId) => {
-    navigate(`/is-os/assessments/1x1/edit/${assessmentId}`);
+  // ==================== EVENT HANDLERS ====================
+  const handleStartAssessments = () => {
+    const firstPending = gridMembers.find(m => 
+      m.currentAssessment?.status === 'pending' || !m.currentAssessment
+    );
+    
+    if (firstPending) {
+      if (firstPending.currentAssessment?.id) {
+        navigate(`/is-os/assessments/${metrics.assessmentType}/edit/${firstPending.currentAssessment.id}`);
+      } else {
+        navigate(`/is-os/assessments/${metrics.assessmentType}/edit`);
+      }
+    } else {
+      navigate(`/is-os/assessments/${metrics.assessmentType}/edit`);
+    }
   };
 
   const handleViewAssessment = (assessmentId) => {
     navigate(`/is-os/assessments/view/${assessmentId}`);
   };
 
-  const getTimeSinceAssessment = (date) => {
-    if (!date) return 'No assessment';
-    const now = new Date();
-    const assessmentDate = new Date(date);
-    
-    const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const assessmentMidnight = new Date(assessmentDate.getFullYear(), assessmentDate.getMonth(), assessmentDate.getDate());
-    
-    const daysDiff = Math.floor((nowMidnight - assessmentMidnight) / (1000 * 60 * 60 * 24));
-    
-    if (daysDiff === 0) return 'Today';
-    if (daysDiff === 1) return 'Yesterday';
-    if (daysDiff < 30) return `${daysDiff} days ago`;
-    if (daysDiff < 60) return '1 month ago';
-    return `${Math.floor(daysDiff / 30)} months ago`;
-  };
-
-  const isPublished = (assessment) => {
-    return assessment?.status === 'completed' || assessment?.status === 'not-aligned';
-  };
-
-  const hasDraft = (member) => {
-    return member.lastAssessment?.status === 'draft';
-  };
-
-  const needsAssessment = (member) => {
-    if (!member.lastAssessment) return true;
-    if (!isPublished(member.lastAssessment)) return true;
-    
-    const now = new Date();
-    const lastAssessmentDate = member.lastAssessment.completedAt;
-    
-    if (!lastAssessmentDate) return true;
-    
-    return now.getMonth() !== lastAssessmentDate.getMonth() || 
-           now.getFullYear() !== lastAssessmentDate.getFullYear();
-  };
-
+  // ==================== RENDER ====================
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -422,10 +365,9 @@ function ISOSHubISFSupervisor() {
   return (
     <div className="min-h-screen bg-gray-50">
       
-      {/* Enhanced Banner - Matching ISL/ISE Style */}
+      {/* ==================== HERO BANNER ==================== */}
       <div className="bg-gradient-to-r from-yellow-500 via-amber-500 to-orange-500 text-white">
         <div className="max-w-7xl mx-auto px-6 py-8">
-          {/* Header */}
           <div className="flex items-center gap-3 mb-6">
             <Zap className="w-10 h-10" />
             <div>
@@ -436,11 +378,9 @@ function ISOSHubISFSupervisor() {
             </div>
           </div>
           
-          {/* Cycle Info Bar */}
           <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               
-              {/* Left: Cycle Info */}
               <div>
                 <div className="text-orange-200 text-sm mb-1">Assessment Cycle</div>
                 <div className="text-white text-lg font-semibold">
@@ -451,7 +391,6 @@ function ISOSHubISFSupervisor() {
                 </div>
               </div>
               
-              {/* Center: Current Month (PROMINENT) */}
               <div className="text-center">
                 <div className="text-orange-200 text-sm mb-1">Current Open Month</div>
                 <div className="text-white text-3xl font-bold flex items-center justify-center gap-2">
@@ -463,7 +402,6 @@ function ISOSHubISFSupervisor() {
                 </div>
               </div>
               
-              {/* Right: Progress & Deadline */}
               <div className="text-right">
                 <div className="text-orange-200 text-sm mb-1">Assessment Progress</div>
                 <div className="text-white text-lg font-semibold">
@@ -486,15 +424,14 @@ function ISOSHubISFSupervisor() {
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
         
-        {/* Top Metrics */}
+        {/* ==================== PERFORMANCE METRICS ==================== */}
         <div className="mb-8">
           <h2 className="text-lg font-semibold text-gray-700 mb-4">Performance Metrics</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             
-            {/* 1. My Performance (from ISL/manager) */}
+            {/* My Performance Card */}
             <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
@@ -521,7 +458,7 @@ function ISOSHubISFSupervisor() {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">9-Box Position</span>
                   <span className="font-semibold text-gray-900">
-                    {metrics.myPosition}
+                    {metrics.myLastAssessment?.nineBoxPosition || 'Not Assessed'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
@@ -533,16 +470,11 @@ function ISOSHubISFSupervisor() {
               </div>
             </Card>
 
-            {/* 2. Team Health - WITH BUCKET BADGE */}
+            {/* Team Health Card */}
             <Card className="bg-gradient-to-br from-yellow-50 to-amber-50 border-2 border-yellow-200">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h3 className="text-sm font-medium text-gray-600">Team Performance</h3>
-                    <Badge className={`border ${metrics.teamBucketClassName} font-semibold text-xs`}>
-                      {metrics.teamBucketLabel}
-                    </Badge>
-                  </div>
+                  <h3 className="text-sm font-medium text-gray-600 mb-1">Team Health</h3>
                   <div className="flex items-center gap-2">
                     <span className="text-5xl font-bold text-gray-900">
                       {metrics.teamAvgComposite}
@@ -555,7 +487,6 @@ function ISOSHubISFSupervisor() {
                 <Users className="w-8 h-8 text-yellow-600" />
               </div>
               
-              {/* Zone Distribution */}
               <div className="mt-4 pt-3 border-t border-yellow-200">
                 <div className="space-y-1 text-xs mb-3">
                   <div className="flex items-center justify-between">
@@ -589,15 +520,11 @@ function ISOSHubISFSupervisor() {
                     <span className="text-gray-600">Team Size</span>
                     <span className="font-semibold text-gray-900">{metrics.teamSize}</span>
                   </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">Alignment Rate</span>
-                    <span className="font-semibold text-gray-900">{metrics.alignmentRate}%</span>
-                  </div>
                 </div>
               </div>
             </Card>
 
-            {/* 3. Monthly Progress */}
+            {/* Monthly Progress Card */}
             <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-2 border-blue-200">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
@@ -607,7 +534,7 @@ function ISOSHubISFSupervisor() {
                       {metrics.assessedThisMonth}
                     </span>
                     <div className="text-sm text-gray-500 mt-2">
-                      / {metrics.teamSize}
+                      / {metrics.totalAssessmentsNeeded}
                     </div>
                   </div>
                 </div>
@@ -617,12 +544,12 @@ function ISOSHubISFSupervisor() {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">Completion Rate</span>
                   <span className="font-semibold text-gray-900">
-                    {getPercentage(metrics.assessedThisMonth, metrics.teamSize)}
+                    {getPercentage(metrics.assessedThisMonth, metrics.totalAssessmentsNeeded)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">Remaining</span>
-                  <span className="font-semibold text-gray-900">{metrics.teamSize - metrics.assessedThisMonth}</span>
+                  <span className="text-gray-600">Alignment Rate</span>
+                  <span className="font-semibold text-gray-900">{metrics.alignmentRate}%</span>
                 </div>
               </div>
             </Card>
@@ -630,12 +557,12 @@ function ISOSHubISFSupervisor() {
           </div>
         </div>
 
-        {/* Team Members Section */}
+        {/* ==================== ASSESSMENT CYCLE GRID ==================== */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">My Team</h2>
-              <p className="text-gray-600 mt-1">Your direct reports • Monthly 1x1 assessments</p>
+              <h2 className="text-2xl font-bold text-gray-900">My Team Assessments</h2>
+              <p className="text-gray-600 mt-1">Direct reports • Monthly 1x1 assessments</p>
             </div>
             <Button
               variant="secondary"
@@ -646,131 +573,23 @@ function ISOSHubISFSupervisor() {
             </Button>
           </div>
 
-          {directReports.length === 0 ? (
-            <Card className="text-center py-12">
-              <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">No Team Members</h3>
-              <p className="text-gray-600">No direct reports found</p>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 gap-4">
-              {directReports.map((member) => {
-                const hasPublishedAssessment = member.lastAssessment && isPublished(member.lastAssessment);
-                const isDraft = hasDraft(member);
-                const needsNewAssessment = needsAssessment(member);
-
-                return (
-                  <Card 
-                    key={member.id}
-                    className={`hover:shadow-lg transition-shadow ${
-                      isDraft ? 'bg-purple-50 border-l-4 border-purple-500' : 
-                      needsNewAssessment ? 'bg-orange-50 border-l-4 border-orange-500' : ''
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      {/* Member Info */}
-                      <div className="flex items-center gap-4 flex-1">
-                        <div className="bg-yellow-100 p-3 rounded-lg">
-                          <User className="w-6 h-6 text-yellow-600" />
-                        </div>
-                        <div>
-                          <h4 className="font-semibold text-gray-900 text-lg">{member.name}</h4>
-                          <div className="flex items-center gap-3 mt-1">
-                            <Badge variant="secondary">{member.pillarRole}</Badge>
-                            <Badge variant="secondary">{member.subPillar}</Badge>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Assessment Info */}
-                      <div className="hidden md:flex items-center gap-6 px-6">
-                        {isDraft ? (
-                          <div className="text-center">
-                            <Badge variant="secondary" className="bg-purple-100 text-purple-800">Draft in Progress</Badge>
-                          </div>
-                        ) : hasPublishedAssessment ? (
-                          <>
-                            <div className="text-center">
-                              <div className="text-2xl font-bold text-gray-900">
-                                {member.lastAssessment.composite}
-                              </div>
-                              <div className="text-xs text-gray-600">Composite</div>
-                            </div>
-                            <div className="text-center min-w-[120px]">
-                              <div className="text-sm font-semibold text-gray-900">
-                                {member.lastAssessment.nineBoxPosition}
-                              </div>
-                              <div className="text-xs text-gray-600">Position</div>
-                            </div>
-                            <div className="text-center">
-                              {member.lastAssessment.alignmentStatus === 'aligned' ? (
-                                <Badge variant="success">Aligned</Badge>
-                              ) : (
-                                <Badge variant="warning">Needs Alignment</Badge>
-                              )}
-                            </div>
-                            <div className="text-center min-w-[60px]">
-                              {member.lastAssessment.hrpRequested && (
-                                <Badge className="bg-red-100 text-red-800 border border-red-300">
-                                  HRP
-                                </Badge>
-                              )}
-                            </div>
-                          </>
-                        ) : (
-                          <div className="text-center">
-                            <Badge variant="secondary">No Assessment</Badge>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex items-center gap-3">
-                        <div className="text-right mr-4">
-                          <div className="text-xs text-gray-600">
-                            {isDraft ? 'Draft Started' : 'Last Assessed'}
-                          </div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {getTimeSinceAssessment(member.lastAssessment?.createdAt)}
-                          </div>
-                        </div>
-                        
-                        {isDraft ? (
-                          <button
-                            onClick={() => handleContinueDraft(member.lastAssessment.id)}
-                            className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors"
-                          >
-                            <Edit className="w-4 h-4" />
-                            Continue Draft
-                          </button>
-                        ) : hasPublishedAssessment && !needsNewAssessment ? (
-                          <button
-                            onClick={() => handleViewAssessment(member.lastAssessment.id)}
-                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors"
-                          >
-                            <Eye className="w-4 h-4" />
-                            {member.lastAssessment.mshId || 'View'}
-                          </button>
-                        ) : (
-                          <Button
-                            variant={needsNewAssessment ? 'primary' : 'secondary'}
-                            onClick={() => handleStartAssessment(member)}
-                            className={needsNewAssessment ? 'bg-orange-600 hover:bg-orange-700' : ''}
-                          >
-                            <Calendar className="w-4 h-4 mr-2" />
-                            Assess
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
+          <AssessmentCycleGrid
+            members={gridMembers}
+            assessmentType={metrics.assessmentType}
+            currentMonthName={metrics.currentMonthName}
+            onStartAssessments={handleStartAssessments}
+            onViewAssessment={handleViewAssessment}
+            showStartButton={true}
+            emptyStateMessage="No team members found"
+            showPillarColumn={false}
+            showSubPillarColumn={true}
+            showTeamSizeColumn={false}
+            showAssessorColumn={false}
+            showHRPColumn={true}
+          />
         </div>
 
-        {/* Quick Actions */}
+        {/* ==================== QUICK ACTIONS ==================== */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="bg-gradient-to-br from-yellow-50 to-amber-50">
             <div className="flex items-start justify-between mb-4">

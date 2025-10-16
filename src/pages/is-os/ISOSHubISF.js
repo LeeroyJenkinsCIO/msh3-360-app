@@ -1,5 +1,5 @@
 // 📁 SAVE TO: src/pages/is-os/ISOSHubISF.jsx
-// ISF Hub - Individual contributor view with personal performance
+// ISF Hub - Individual contributor view with personal health metrics
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -284,7 +284,7 @@ function ISOSHubISF() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading your performance data...</p>
+          <p className="text-gray-600">Loading your health data...</p>
         </div>
       </div>
     );
@@ -301,7 +301,7 @@ function ISOSHubISF() {
             <div>
               <h1 className="text-5xl font-bold">IS OS Hub</h1>
               <p className="text-emerald-100 text-lg">
-                My View - Personal Performance & Development
+                My View - Personal Health & Development
               </p>
             </div>
           </div>
@@ -353,9 +353,9 @@ function ISOSHubISF() {
 
       <div className="max-w-7xl mx-auto px-6 py-8">
         
-        {/* ==================== PERFORMANCE METRICS ==================== */}
+        {/* ==================== HEALTH METRICS ==================== */}
         <div className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-700 mb-4">My Performance</h2>
+          <h2 className="text-lg font-semibold text-gray-700 mb-4">My Health Metrics</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             
             {/* My Current Score Card */}
@@ -571,7 +571,7 @@ function ISOSHubISF() {
               <div>
                 <h3 className="text-lg font-bold text-gray-900 mb-2">My Dashboard</h3>
                 <p className="text-sm text-gray-600">
-                  View detailed performance metrics and trends
+                  View detailed health metrics and trends
                 </p>
               </div>
               <BarChart3 className="w-8 h-8 text-green-600" />

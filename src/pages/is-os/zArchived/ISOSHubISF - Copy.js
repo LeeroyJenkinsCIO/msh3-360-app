@@ -1,11 +1,13 @@
-// src/pages/is-os/ISOSHubISF.jsx
+// 📍 SAVE TO: src/pages/is-os/ISOSHubISF.jsx
+// ISF Hub - Individual contributor view with personal performance
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { 
-  Calendar, Zap, Users, ArrowRight, 
-  TrendingUp, TrendingDown, Minus, Award, User, Building2, Target, CheckCircle, Eye, BarChart3, AlertTriangle
+  Calendar, Zap, ArrowRight, 
+  TrendingUp, TrendingDown, Minus, Award, User, Users, Building2, Target, CheckCircle, Eye, BarChart3, AlertTriangle
 } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -17,16 +19,15 @@ function ISOSHubISF() {
   const { user } = useAuth();
   const navigate = useNavigate();
   
-  // Cycle start date: October 1, 2025
+  // ==================== CONSTANTS ====================
   const CYCLE_START_DATE = new Date(2025, 9, 1);
   
-  // State
+  // ==================== STATE ====================
   const [myAssessments, setMyAssessments] = useState([]);
   const [pillarInfo, setPillarInfo] = useState(null);
   const [teamInfo, setTeamInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState({
-    // Cycle Info
     cycleNumber: 1,
     cycleInYear: 1,
     cycleMonth: 1,
@@ -34,26 +35,16 @@ function ISOSHubISF() {
     currentMonthName: 'October 2025',
     nextReviewDate: null,
     isPastReviewWindow: false,
-    
-    // My Performance
     myComposite: 0,
     myPosition: 'Not Assessed',
     myTrend: 'stable',
-    myBucketLabel: 'Below Baseline',
-    myBucketClassName: 'bg-red-100 text-red-800 border-red-300',
-    
-    // My Progress
     assessmentsReceived: 0,
     lastAssessmentDate: null,
-    
-    // Team Context
     teamAvg: 0,
-    teamBucketLabel: 'Below Baseline',
-    teamBucketClassName: 'bg-red-100 text-red-800 border-red-300',
     myVsTeam: 'At Average'
   });
 
-  // Helper function to calculate 5 business days from start of month
+  // ==================== HELPER FUNCTIONS ====================
   const calculateDeadline = (monthStart) => {
     let businessDays = 0;
     let currentDate = new Date(monthStart);
@@ -69,7 +60,6 @@ function ISOSHubISF() {
     return currentDate;
   };
 
-  // Helper function to get current cycle info
   const getCurrentCycleInfo = (date = new Date()) => {
     const monthsSinceStart = (date.getFullYear() - CYCLE_START_DATE.getFullYear()) * 12 + 
                              (date.getMonth() - CYCLE_START_DATE.getMonth());
@@ -96,206 +86,6 @@ function ISOSHubISF() {
     };
   };
 
-  // Helper function to get bucket badge styling
-  const getBucketBadgeStyle = (avgComposite) => {
-    if (avgComposite >= 11) {
-      return {
-        label: 'Exceptional',
-        className: 'bg-blue-100 text-blue-800 border-blue-300'
-      };
-    }
-    if (avgComposite >= 7) {
-      return {
-        label: 'Above Baseline',
-        className: 'bg-green-100 text-green-800 border-green-300'
-      };
-    }
-    if (avgComposite >= 5) {
-      return {
-        label: 'Baseline',
-        className: 'bg-yellow-100 text-yellow-800 border-yellow-300'
-      };
-    }
-    return {
-      label: 'Below Baseline',
-      className: 'bg-red-100 text-red-800 border-red-300'
-    };
-  };
-
-  useEffect(() => {
-    const fetchMyData = async () => {
-      try {
-        setLoading(true);
-        
-        console.log('🔍 ISF Loading my performance data');
-        console.log('📋 Current user:', user);
-        
-        const now = new Date();
-        const cycleInfo = getCurrentCycleInfo(now);
-        
-        console.log(`📅 Current Cycle: Cycle ${cycleInfo.cycleInYear} of 4 • ${cycleInfo.assessmentType}`);
-        console.log(`📅 Next Review: ${cycleInfo.nextReviewDate.toLocaleDateString()}`);
-        
-        // Get my pillar information
-        if (user.pillar) {
-          const pillarsRef = collection(db, 'pillars');
-          const pillarQuery = query(pillarsRef, where('pillarId', '==', user.pillar));
-          const pillarSnapshot = await getDocs(pillarQuery);
-          
-          if (!pillarSnapshot.empty) {
-            const pillarData = {
-              id: pillarSnapshot.docs[0].id,
-              ...pillarSnapshot.docs[0].data()
-            };
-            setPillarInfo(pillarData);
-          }
-        }
-        
-        // Get my assessments (as the assessed person)
-        const assessmentsRef = collection(db, 'assessments');
-        const myAssessmentsQuery = query(
-          assessmentsRef,
-          where('assesseeId', '==', user.userId)
-        );
-        const assessmentsSnapshot = await getDocs(myAssessmentsQuery);
-        
-        // Sort in memory and filter
-        const assessments = assessmentsSnapshot.docs
-          .map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-            completedAt: doc.data().completedAt?.toDate?.() || null,
-            createdAt: doc.data().createdAt?.toDate?.() || null
-          }))
-          .filter(data => data.status === 'completed' || data.status === 'not-aligned')
-          .sort((a, b) => {
-            const aTime = a.completedAt || new Date(0);
-            const bTime = b.completedAt || new Date(0);
-            return bTime - aTime;
-          });
-        
-        setMyAssessments(assessments);
-        console.log(`📊 Found ${assessments.length} published assessments`);
-
-        // Calculate metrics
-        const latestAssessment = assessments[0] || null;
-        
-        // Calculate trend (compare latest two assessments)
-        let trend = 'stable';
-        if (assessments.length >= 2) {
-          const scoreDiff = assessments[0].composite - assessments[1].composite;
-          if (scoreDiff > 0.5) trend = 'growth';
-          else if (scoreDiff < -0.5) trend = 'down';
-        }
-
-        // Get my bucket badge
-        const myComposite = latestAssessment?.composite || 0;
-        const myBucketInfo = getBucketBadgeStyle(myComposite);
-
-        // Get team context (if I have a manager)
-        let teamAvg = 0;
-        let teamBucketInfo = { label: 'Below Baseline', className: 'bg-red-100 text-red-800 border-red-300' };
-        let myVsTeam = 'At Average';
-        
-        if (user.managerId) {
-          // Find my manager
-          const usersRef = collection(db, 'users');
-          const managerQuery = query(usersRef, where('userId', '==', user.managerId));
-          const managerSnapshot = await getDocs(managerQuery);
-          
-          if (!managerSnapshot.empty) {
-            const managerData = managerSnapshot.docs[0].data();
-            setTeamInfo({
-              supervisorName: managerData.displayName,
-              supervisorId: user.managerId
-            });
-            
-            // Get all team members under this manager
-            const teamQuery = query(usersRef, where('managerId', '==', user.managerId));
-            const teamSnapshot = await getDocs(teamQuery);
-            
-            console.log(`👥 Found ${teamSnapshot.docs.length} team members`);
-            
-            if (teamSnapshot.docs.length > 0) {
-              let teamScores = [];
-              
-              for (const teamDoc of teamSnapshot.docs) {
-                const teamMemberData = teamDoc.data();
-                const memberAssessmentQuery = query(
-                  assessmentsRef,
-                  where('assesseeId', '==', teamMemberData.userId)
-                );
-                const memberAssessmentSnapshot = await getDocs(memberAssessmentQuery);
-                
-                // Get latest published assessment
-                const memberAssessments = memberAssessmentSnapshot.docs
-                  .map(doc => doc.data())
-                  .filter(data => (data.status === 'completed' || data.status === 'not-aligned') && data.composite)
-                  .sort((a, b) => {
-                    const aTime = a.completedAt?.toDate?.() || new Date(0);
-                    const bTime = b.completedAt?.toDate?.() || new Date(0);
-                    return bTime - aTime;
-                  });
-                
-                if (memberAssessments.length > 0) {
-                  teamScores.push(memberAssessments[0].composite);
-                }
-              }
-              
-              if (teamScores.length > 0) {
-                teamAvg = teamScores.reduce((a, b) => a + b, 0) / teamScores.length;
-                teamBucketInfo = getBucketBadgeStyle(teamAvg);
-                
-                // Calculate my vs team
-                if (myComposite > teamAvg + 0.5) myVsTeam = 'Above Average';
-                else if (myComposite < teamAvg - 0.5) myVsTeam = 'Below Average';
-                else myVsTeam = 'At Average';
-                
-                console.log(`📊 Team avg: ${teamAvg.toFixed(1)}, My score: ${myComposite}, Comparison: ${myVsTeam}`);
-              }
-            }
-          }
-        }
-
-        setMetrics({
-          cycleNumber: cycleInfo.cycleNumber,
-          cycleInYear: cycleInfo.cycleInYear,
-          cycleMonth: cycleInfo.cycleMonth,
-          assessmentType: cycleInfo.assessmentType,
-          currentMonthName: cycleInfo.currentMonthName,
-          nextReviewDate: cycleInfo.nextReviewDate,
-          isPastReviewWindow: cycleInfo.isPastReviewWindow,
-          
-          myComposite,
-          myPosition: latestAssessment?.nineBoxPosition || 'Not Assessed',
-          myTrend: trend,
-          myBucketLabel: myBucketInfo.label,
-          myBucketClassName: myBucketInfo.className,
-          
-          assessmentsReceived: assessments.length,
-          lastAssessmentDate: latestAssessment?.completedAt || null,
-          
-          teamAvg: teamAvg > 0 ? teamAvg.toFixed(1) : 0,
-          teamBucketLabel: teamBucketInfo.label,
-          teamBucketClassName: teamBucketInfo.className,
-          myVsTeam
-        });
-
-        console.log(`✅ Loaded ${assessments.length} assessments for ${user.displayName}`);
-      } catch (error) {
-        console.error('❌ Error fetching my data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchMyData();
-  }, [user.userId]);
-
-  const handleViewAssessment = (assessmentId) => {
-    navigate(`/is-os/assessments/view/${assessmentId}`);
-  };
-
   const getTimeSinceAssessment = (date) => {
     if (!date) return 'No assessment';
     const now = new Date();
@@ -318,6 +108,169 @@ function ISOSHubISF() {
     return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
   };
 
+  const getCompositeZoneName = (score) => {
+    if (score >= 11 && score <= 12) return 'Exceptional';
+    if (score >= 7 && score <= 10) return 'Above Baseline';
+    if (score >= 5 && score <= 6) return 'Baseline';
+    if (score >= 0 && score <= 4) return 'Below Baseline';
+    return 'Not Assessed';
+  };
+
+  // ==================== DATA FETCHING ====================
+  useEffect(() => {
+    const fetchMyData = async () => {
+      try {
+        setLoading(true);
+        
+        const now = new Date();
+        const cycleInfo = getCurrentCycleInfo(now);
+        
+        // Get my pillar information
+        if (user.pillar) {
+          const pillarsRef = collection(db, 'pillars');
+          const pillarQuery = query(pillarsRef, where('pillarId', '==', user.pillar));
+          const pillarSnapshot = await getDocs(pillarQuery);
+          
+          if (!pillarSnapshot.empty) {
+            const pillarData = {
+              id: pillarSnapshot.docs[0].id,
+              ...pillarSnapshot.docs[0].data()
+            };
+            setPillarInfo(pillarData);
+          }
+        }
+        
+        // Get my assessments (where I'm the subject)
+        const assessmentsRef = collection(db, 'assessments');
+        const myAssessmentsQuery = query(
+          assessmentsRef,
+          where('subjectId', '==', user.uid)  // ✅ FIXED: subjectId instead of assesseeId
+        );
+        const assessmentsSnapshot = await getDocs(myAssessmentsQuery);
+        
+        // Sort and filter assessments
+        const assessments = assessmentsSnapshot.docs
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            completedAt: doc.data().completedAt?.toDate?.() || null,
+            createdAt: doc.data().createdAt?.toDate?.() || null
+          }))
+          .filter(data => data.status === 'completed' || data.status === 'not-aligned')
+          .sort((a, b) => {
+            const aTime = a.completedAt || new Date(0);
+            const bTime = b.completedAt || new Date(0);
+            return bTime - aTime;
+          });
+        
+        setMyAssessments(assessments);
+
+        // Calculate metrics
+        const latestAssessment = assessments[0] || null;
+        
+        // Calculate trend (compare latest two assessments)
+        let trend = 'stable';
+        if (assessments.length >= 2) {
+          const scoreDiff = assessments[0].composite - assessments[1].composite;
+          if (scoreDiff > 0.5) trend = 'growth';
+          else if (scoreDiff < -0.5) trend = 'down';
+        }
+
+        const myComposite = latestAssessment?.composite || 0;
+
+        // Get team context (if I have a manager)
+        let teamAvg = 0;
+        let myVsTeam = 'At Average';
+        
+        if (user.managerId) {
+          // Find my manager by userId
+          const usersRef = collection(db, 'users');
+          const managerQuery = query(usersRef, where('userId', '==', user.managerId));
+          const managerSnapshot = await getDocs(managerQuery);
+          
+          if (!managerSnapshot.empty) {
+            const managerData = managerSnapshot.docs[0].data();
+            setTeamInfo({
+              supervisorName: managerData.displayName,
+              supervisorId: user.managerId
+            });
+            
+            // Get all team members under this manager
+            const teamQuery = query(usersRef, where('managerId', '==', user.managerId));
+            const teamSnapshot = await getDocs(teamQuery);
+            
+            if (teamSnapshot.docs.length > 0) {
+              let teamScores = [];
+              
+              for (const teamDoc of teamSnapshot.docs) {
+                const teamMemberAuthUid = teamDoc.id;  // Firebase auth UID
+                
+                const memberAssessmentQuery = query(
+                  assessmentsRef,
+                  where('subjectId', '==', teamMemberAuthUid)  // ✅ FIXED
+                );
+                const memberAssessmentSnapshot = await getDocs(memberAssessmentQuery);
+                
+                // Get latest published assessment
+                const memberAssessments = memberAssessmentSnapshot.docs
+                  .map(doc => doc.data())
+                  .filter(data => (data.status === 'completed' || data.status === 'not-aligned') && data.composite)
+                  .sort((a, b) => {
+                    const aTime = a.completedAt?.toDate?.() || new Date(0);
+                    const bTime = b.completedAt?.toDate?.() || new Date(0);
+                    return bTime - aTime;
+                  });
+                
+                if (memberAssessments.length > 0) {
+                  teamScores.push(memberAssessments[0].composite);
+                }
+              }
+              
+              if (teamScores.length > 0) {
+                teamAvg = teamScores.reduce((a, b) => a + b, 0) / teamScores.length;
+                
+                // Calculate my vs team
+                if (myComposite > teamAvg + 0.5) myVsTeam = 'Above Average';
+                else if (myComposite < teamAvg - 0.5) myVsTeam = 'Below Average';
+                else myVsTeam = 'At Average';
+              }
+            }
+          }
+        }
+
+        setMetrics({
+          cycleNumber: cycleInfo.cycleNumber,
+          cycleInYear: cycleInfo.cycleInYear,
+          cycleMonth: cycleInfo.cycleMonth,
+          assessmentType: cycleInfo.assessmentType,
+          currentMonthName: cycleInfo.currentMonthName,
+          nextReviewDate: cycleInfo.nextReviewDate,
+          isPastReviewWindow: cycleInfo.isPastReviewWindow,
+          myComposite,
+          myPosition: latestAssessment?.nineBoxPosition || 'Not Assessed',
+          myTrend: trend,
+          assessmentsReceived: assessments.length,
+          lastAssessmentDate: latestAssessment?.completedAt || null,
+          teamAvg: teamAvg > 0 ? teamAvg.toFixed(1) : 0,
+          myVsTeam
+        });
+
+      } catch (error) {
+        console.error('Error fetching my data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMyData();
+  }, [user.uid]);
+
+  // ==================== EVENT HANDLERS ====================
+  const handleViewAssessment = (assessmentId) => {
+    navigate(`/is-os/assessments/view/${assessmentId}`);
+  };
+
+  // ==================== RENDER ====================
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -332,10 +285,9 @@ function ISOSHubISF() {
   return (
     <div className="min-h-screen bg-gray-50">
       
-      {/* Enhanced Banner - Matching ISE/ISL/Supervisor Style */}
+      {/* ==================== HERO BANNER ==================== */}
       <div className="bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 text-white">
         <div className="max-w-7xl mx-auto px-6 py-8">
-          {/* Header */}
           <div className="flex items-center gap-3 mb-6">
             <Zap className="w-10 h-10" />
             <div>
@@ -346,11 +298,9 @@ function ISOSHubISF() {
             </div>
           </div>
           
-          {/* Cycle Info Bar */}
           <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               
-              {/* Left: Cycle Info */}
               <div>
                 <div className="text-emerald-200 text-sm mb-1">Assessment Cycle</div>
                 <div className="text-white text-lg font-semibold">
@@ -361,7 +311,6 @@ function ISOSHubISF() {
                 </div>
               </div>
               
-              {/* Center: Current Month (PROMINENT) */}
               <div className="text-center">
                 <div className="text-emerald-200 text-sm mb-1">Current Month</div>
                 <div className="text-white text-3xl font-bold flex items-center justify-center gap-2">
@@ -373,7 +322,6 @@ function ISOSHubISF() {
                 </div>
               </div>
               
-              {/* Right: Next Review */}
               <div className="text-right">
                 <div className="text-emerald-200 text-sm mb-1">My Next Review</div>
                 <div className="text-white text-lg font-semibold">
@@ -395,26 +343,18 @@ function ISOSHubISF() {
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
         
-        {/* Top Metrics */}
+        {/* ==================== PERFORMANCE METRICS ==================== */}
         <div className="mb-8">
           <h2 className="text-lg font-semibold text-gray-700 mb-4">My Performance</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             
-            {/* My Current Score - WITH BUCKET BADGE */}
+            {/* My Current Score Card */}
             <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h3 className="text-sm font-medium text-gray-600">Current Score</h3>
-                    {metrics.myComposite > 0 && (
-                      <Badge className={`border ${metrics.myBucketClassName} font-semibold text-xs`}>
-                        {metrics.myBucketLabel}
-                      </Badge>
-                    )}
-                  </div>
+                  <h3 className="text-sm font-medium text-gray-600 mb-1">Current Score</h3>
                   <div className="flex items-center gap-2">
                     <span className="text-5xl font-bold text-gray-900">
                       {metrics.myComposite || '—'}
@@ -427,6 +367,12 @@ function ISOSHubISF() {
                 <Award className="w-8 h-8 text-green-600" />
               </div>
               <div className="mt-4 pt-3 border-t border-green-200 space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Zone</span>
+                  <span className="font-semibold text-gray-900">
+                    {getCompositeZoneName(metrics.myComposite)}
+                  </span>
+                </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">9-Box Position</span>
                   <span className="font-semibold text-gray-900">{metrics.myPosition}</span>
@@ -457,7 +403,7 @@ function ISOSHubISF() {
               </div>
             </Card>
 
-            {/* Assessment History */}
+            {/* Assessment History Card */}
             <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-2 border-blue-200">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
@@ -489,18 +435,11 @@ function ISOSHubISF() {
               </div>
             </Card>
 
-            {/* Team Context - WITH BUCKET BADGE */}
+            {/* Team Context Card */}
             <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h3 className="text-sm font-medium text-gray-600">Team Context</h3>
-                    {metrics.teamAvg > 0 && (
-                      <Badge className={`border ${metrics.teamBucketClassName} font-semibold text-xs`}>
-                        {metrics.teamBucketLabel}
-                      </Badge>
-                    )}
-                  </div>
+                  <h3 className="text-sm font-medium text-gray-600 mb-1">Team Context</h3>
                   <div className="flex items-center gap-2">
                     <span className="text-5xl font-bold text-gray-900">
                       {metrics.teamAvg || '—'}
@@ -535,7 +474,7 @@ function ISOSHubISF() {
           </div>
         </div>
 
-        {/* Assessment History Section */}
+        {/* ==================== ASSESSMENT HISTORY ==================== */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -560,7 +499,6 @@ function ISOSHubISF() {
                   className="hover:shadow-lg transition-shadow"
                 >
                   <div className="flex items-center justify-between">
-                    {/* Assessment Info */}
                     <div className="flex items-center gap-4 flex-1">
                       <div className="bg-green-100 p-3 rounded-lg">
                         <CheckCircle className="w-6 h-6 text-green-600" />
@@ -582,7 +520,6 @@ function ISOSHubISF() {
                       </div>
                     </div>
 
-                    {/* Scores */}
                     <div className="hidden md:flex items-center gap-6 px-6">
                       <div className="text-center">
                         <div className="text-2xl font-bold text-gray-900">
@@ -605,7 +542,6 @@ function ISOSHubISF() {
                       </div>
                     </div>
 
-                    {/* Action */}
                     <div className="flex items-center gap-3">
                       <button
                         onClick={() => handleViewAssessment(assessment.id)}
@@ -622,7 +558,7 @@ function ISOSHubISF() {
           )}
         </div>
 
-        {/* Pillar & Team Info */}
+        {/* ==================== PILLAR & TEAM INFO ==================== */}
         {pillarInfo && (
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-gray-900 mb-4">My Team Context</h2>
@@ -665,7 +601,7 @@ function ISOSHubISF() {
           </div>
         )}
 
-        {/* Quick Actions */}
+        {/* ==================== QUICK ACTIONS ==================== */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="bg-gradient-to-br from-green-50 to-emerald-50">
             <div className="flex items-start justify-between mb-4">

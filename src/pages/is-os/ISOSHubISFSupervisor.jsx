@@ -475,16 +475,16 @@ function ISOSHubISFSupervisor() {
 
       <div className="max-w-7xl mx-auto px-6 py-8">
         
-        {/* ==================== PERFORMANCE METRICS ==================== */}
+        {/* ==================== TEAM METRICS ==================== */}
         <div className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-700 mb-4">Performance Metrics</h2>
+          <h2 className="text-lg font-semibold text-gray-700 mb-4">Team Metrics</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             
-            {/* My Performance Card */}
+            {/* My Health Card */}
             <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
-                  <h3 className="text-sm font-medium text-gray-600 mb-1">My Performance</h3>
+                  <h3 className="text-sm font-medium text-gray-600 mb-1">My Health</h3>
                   <div className="flex items-center gap-2">
                     <span className="text-5xl font-bold text-gray-900">
                       {metrics.myComposite || '—'}
@@ -705,7 +705,7 @@ function ISOSHubISFSupervisor() {
               <div>
                 <h3 className="text-lg font-bold text-gray-900 mb-2">Team Dashboard</h3>
                 <p className="text-sm text-gray-600">
-                  Performance trends and team insights
+                  Health trends and team insights
                 </p>
               </div>
               <Users className="w-8 h-8 text-yellow-600" />
@@ -725,7 +725,7 @@ function ISOSHubISFSupervisor() {
               <div>
                 <h3 className="text-lg font-bold text-gray-900 mb-2">Team Analytics</h3>
                 <p className="text-sm text-gray-600">
-                  Historical trends and performance patterns
+                  Historical trends and health patterns
                 </p>
               </div>
               <TrendingUp className="w-8 h-8 text-blue-600" />
