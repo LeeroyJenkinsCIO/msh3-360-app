@@ -90,7 +90,7 @@ export const updateUser = async (userId, userData) => {
 };
 
 /**
- * Get assessment counts for all users - ONLY published MSH assessments
+ * Get assessment counts for all users across ALL cycles
  * Returns object: { userId: { asAssessor: number, asAssessed: number } }
  */
 export const getAssessmentCounts = async () => {
@@ -103,12 +103,6 @@ export const getAssessmentCounts = async () => {
     
     snapshot.forEach(doc => {
       const data = doc.data();
-      
-      // ✅ ONLY count assessments with published MSH IDs
-      if (!data.mshId && !data.mshNumber) {
-        return; // Skip unpublished assessments
-      }
-      
       const assessorId = data.assessorId;
       const assessedId = data.assessedPersonId;
       
@@ -146,54 +140,4 @@ export const getDirectReportCounts = (users) => {
   });
   
   return counts;
-};
-
-/**
- * Fix missing userId fields - auto-generate from email
- * Returns number of users fixed
- */
-export const fixMissingUserIds = async () => {
-  try {
-    console.log('🔧 Starting auto-fix for missing userIds...');
-    
-    const users = await getAllUsers();
-    const updates = [];
-    
-    users.forEach(user => {
-      // If userId is missing but email exists
-      if (!user.userId && user.email) {
-        const generatedUserId = user.email.split('@')[0]; // "hrp@sierranevada.com" → "hrp"
-        updates.push({
-          id: user.id,
-          userId: generatedUserId,
-          email: user.email,
-          displayName: user.displayName
-        });
-      }
-    });
-    
-    if (updates.length === 0) {
-      console.log('✅ No users need userId fixes');
-      return 0;
-    }
-    
-    console.log(`📝 Found ${updates.length} user(s) with missing userId`);
-    
-    // Update all users with missing userId
-    for (const update of updates) {
-      console.log(`  → Fixing ${update.displayName} (${update.email}): setting userId to "${update.userId}"`);
-      
-      await updateDoc(doc(db, 'users', update.id), {
-        userId: update.userId,
-        updatedAt: new Date().toISOString()
-      });
-    }
-    
-    console.log(`✅ Fixed ${updates.length} user(s)`);
-    return updates.length;
-    
-  } catch (error) {
-    console.error('❌ Error fixing missing userIds:', error);
-    throw error;
-  }
 };

@@ -2,12 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Database, Trash2, RefreshCw, AlertTriangle, 
-  FileText, Award, Calendar, Hash, Layers
+  FileText, Archive, Award
 } from 'lucide-react';
 import { db } from '../../firebase';
 import { 
   collection, 
   getDocs, 
+  deleteDoc, 
   doc, 
   writeBatch,
   setDoc,
@@ -19,12 +20,10 @@ import Button from '../../components/ui/Button';
 function DatabaseManagement() {
   const [stats, setStats] = useState({
     totalAssessments: 0,
-    pendingAssessments: 0,
-    completedAssessments: 0,
     totalCycles: 0,
     totalMshScores: 0,
     currentMSH: 0,
-    totalTransactionalDocs: 0
+    assessmentCounter: 0
   });
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
@@ -37,21 +36,9 @@ function DatabaseManagement() {
     try {
       setLoading(true);
       
-      // Count assessments by status
+      // Count assessments
       const assessmentsSnapshot = await getDocs(collection(db, 'assessments'));
-      let totalAssessments = 0;
-      let pendingAssessments = 0;
-      let completedAssessments = 0;
-      
-      assessmentsSnapshot.forEach(doc => {
-        totalAssessments++;
-        const status = doc.data().status;
-        if (status === 'pending' || status === 'not-started') {
-          pendingAssessments++;
-        } else if (status === 'completed' || status === 'published') {
-          completedAssessments++;
-        }
-      });
+      const totalAssessments = assessmentsSnapshot.size;
       
       // Count cycles
       const cyclesSnapshot = await getDocs(collection(db, 'assessmentCycles'));
@@ -61,27 +48,29 @@ function DatabaseManagement() {
       const mshScoresSnapshot = await getDocs(collection(db, 'mshScores'));
       const totalMshScores = mshScoresSnapshot.size;
       
-      // Calculate total transactional documents
-      const totalTransactionalDocs = totalAssessments + totalMshScores + totalCycles;
-      
-      // Get counters
-      const countersSnapshot = await getDocs(collection(db, 'counters'));
+      // Get MSH counter
+      const mshCounterDoc = await getDocs(collection(db, 'counters'));
       let currentMSH = 0;
-      
-      countersSnapshot.forEach(doc => {
+      mshCounterDoc.forEach(doc => {
         if (doc.id === 'mshCounter') {
           currentMSH = doc.data().currentMSH || 0;
         }
       });
       
+      // Get assessment counter
+      let assessmentCounter = 0;
+      mshCounterDoc.forEach(doc => {
+        if (doc.id === 'assessmentCounter') {
+          assessmentCounter = doc.data().value || 0;
+        }
+      });
+      
       setStats({
         totalAssessments,
-        pendingAssessments,
-        completedAssessments,
         totalCycles,
         totalMshScores,
         currentMSH,
-        totalTransactionalDocs
+        assessmentCounter
       });
       
     } catch (error) {
@@ -119,35 +108,25 @@ function DatabaseManagement() {
       console.log('🗑️ Deleting all assessments...');
       
       const assessmentsSnapshot = await getDocs(collection(db, 'assessments'));
-      let batch = writeBatch(db);
+      const batch = writeBatch(db);
       let count = 0;
-      let batchCount = 0;
       
-      for (const docSnap of assessmentsSnapshot.docs) {
+      assessmentsSnapshot.forEach((docSnap) => {
         batch.delete(doc(db, 'assessments', docSnap.id));
         count++;
-        batchCount++;
-        
-        if (batchCount >= 500) {
-          await batch.commit();
-          batch = writeBatch(db);
-          batchCount = 0;
-        }
-      }
+      });
       
-      if (batchCount > 0) {
-        await batch.commit();
-      }
+      await batch.commit();
       
       // Reset assessment counter
       await setDoc(doc(db, 'counters', 'assessmentCounter'), {
         value: 0,
         lastReset: serverTimestamp(),
-        resetMethod: 'manual-assessments-only'
+        resetMethod: 'manual'
       });
       
       console.log(`✅ Deleted ${count} assessments and reset counter`);
-      alert(`✅ Successfully deleted ${count} assessments and reset counter`);
+      alert(`✅ Deleted ${count} assessments`);
       await loadStats();
       
     } catch (error) {
@@ -185,25 +164,15 @@ function DatabaseManagement() {
       console.log('🗑️ Deleting all MSH scores...');
       
       const mshScoresSnapshot = await getDocs(collection(db, 'mshScores'));
-      let batch = writeBatch(db);
+      const batch = writeBatch(db);
       let count = 0;
-      let batchCount = 0;
       
-      for (const docSnap of mshScoresSnapshot.docs) {
+      mshScoresSnapshot.forEach((docSnap) => {
         batch.delete(doc(db, 'mshScores', docSnap.id));
         count++;
-        batchCount++;
-        
-        if (batchCount >= 500) {
-          await batch.commit();
-          batch = writeBatch(db);
-          batchCount = 0;
-        }
-      }
+      });
       
-      if (batchCount > 0) {
-        await batch.commit();
-      }
+      await batch.commit();
       
       // Reset MSH counter
       await setDoc(doc(db, 'counters', 'mshCounter'), {
@@ -212,7 +181,7 @@ function DatabaseManagement() {
       });
       
       console.log(`✅ Deleted ${count} MSH scores and reset counter`);
-      alert(`✅ Successfully deleted ${count} MSH scores and reset counter`);
+      alert(`✅ Deleted ${count} MSH scores`);
       await loadStats();
       
     } catch (error) {
@@ -249,28 +218,18 @@ function DatabaseManagement() {
       console.log('🗑️ Deleting all cycles...');
       
       const cyclesSnapshot = await getDocs(collection(db, 'assessmentCycles'));
-      let batch = writeBatch(db);
+      const batch = writeBatch(db);
       let count = 0;
-      let batchCount = 0;
       
-      for (const docSnap of cyclesSnapshot.docs) {
+      cyclesSnapshot.forEach((docSnap) => {
         batch.delete(doc(db, 'assessmentCycles', docSnap.id));
         count++;
-        batchCount++;
-        
-        if (batchCount >= 500) {
-          await batch.commit();
-          batch = writeBatch(db);
-          batchCount = 0;
-        }
-      }
+      });
       
-      if (batchCount > 0) {
-        await batch.commit();
-      }
+      await batch.commit();
       
       console.log(`✅ Deleted ${count} cycles`);
-      alert(`✅ Successfully deleted ${count} cycles`);
+      alert(`✅ Deleted ${count} cycles`);
       await loadStats();
       
     } catch (error) {
@@ -284,26 +243,24 @@ function DatabaseManagement() {
   /**
    * COMPLETE NUCLEAR RESET
    * Deletes: Assessments, MSH Scores, Cycles
-   * Resets: ALL counters to 0
+   * Resets: Both counters to 0
    */
   const handleCompleteReset = async () => {
     const confirmed = window.confirm(
-      '🚨 COMPLETE NUCLEAR RESET\n\n' +
-      'This will DELETE ALL TRANSACTIONAL DATA:\n' +
-      `• ${stats.totalAssessments} assessment forms\n` +
+      '⚠️ COMPLETE TRANSACTIONAL RESET\n\n' +
+      'This will DELETE ALL DATA:\n' +
+      `• ${stats.totalAssessments} assessments\n` +
       `• ${stats.totalMshScores} MSH scores\n` +
       `• ${stats.totalCycles} cycles\n` +
-      `• Total: ${stats.totalTransactionalDocs} documents\n` +
-      '• Reset assessment counter to 0\n' +
-      '• Reset MSH counter to 0\n\n' +
+      '• Reset both counters to 0\n\n' +
       'Users and organizational structure will be preserved.\n\n' +
       'This action CANNOT be undone!'
     );
 
     if (!confirmed) return;
 
-    const confirmText = window.prompt('Type "NUCLEAR" to confirm:');
-    if (confirmText !== 'NUCLEAR') {
+    const confirmText = window.prompt('Type "RESET" to confirm:');
+    if (confirmText !== 'RESET') {
       alert('Reset cancelled - confirmation text did not match');
       return;
     }
@@ -312,15 +269,15 @@ function DatabaseManagement() {
       setProcessing(true);
       
       console.log('');
-      console.log('╔═══════════════════════════════════════════════════╗');
-      console.log('🚀 COMPLETE NUCLEAR RESET INITIATED');
-      console.log('╚═══════════════════════════════════════════════════╝');
+      console.log('═══════════════════════════════════════════════════');
+      console.log('🚀 COMPLETE RESET INITIATED');
+      console.log('═══════════════════════════════════════════════════');
       console.log('');
       
       let totalDeleted = 0;
       
-      // Step 1: Delete all assessments
-      console.log('🗑️ Step 1/4: Deleting assessments...');
+      // Delete all assessments
+      console.log('🗑️ Step 1: Deleting assessments...');
       const assessmentsSnapshot = await getDocs(collection(db, 'assessments'));
       let batch = writeBatch(db);
       let batchCount = 0;
@@ -343,8 +300,8 @@ function DatabaseManagement() {
       
       console.log(`✅ Deleted ${assessmentsSnapshot.size} assessments`);
       
-      // Step 2: Delete all MSH scores
-      console.log('🗑️ Step 2/4: Deleting MSH scores...');
+      // Delete all MSH scores
+      console.log('🗑️ Step 2: Deleting MSH scores...');
       const mshScoresSnapshot = await getDocs(collection(db, 'mshScores'));
       batch = writeBatch(db);
       batchCount = 0;
@@ -367,8 +324,8 @@ function DatabaseManagement() {
       
       console.log(`✅ Deleted ${mshScoresSnapshot.size} MSH scores`);
       
-      // Step 3: Delete all cycles
-      console.log('🗑️ Step 3/4: Deleting cycles...');
+      // Delete all cycles
+      console.log('🗑️ Step 3: Deleting cycles...');
       const cyclesSnapshot = await getDocs(collection(db, 'assessmentCycles'));
       batch = writeBatch(db);
       batchCount = 0;
@@ -391,9 +348,8 @@ function DatabaseManagement() {
       
       console.log(`✅ Deleted ${cyclesSnapshot.size} cycles`);
       
-      // Step 4: Reset ALL counters
-      console.log('🔄 Step 4/4: Resetting all counters...');
-      
+      // Reset counters
+      console.log('🔄 Step 4: Resetting counters...');
       await setDoc(doc(db, 'counters', 'assessmentCounter'), {
         value: 0,
         lastReset: serverTimestamp(),
@@ -402,27 +358,24 @@ function DatabaseManagement() {
       
       await setDoc(doc(db, 'counters', 'mshCounter'), {
         currentMSH: 0,
-        lastUpdated: serverTimestamp(),
-        resetMethod: 'nuclear'
+        lastUpdated: serverTimestamp()
       });
       
-      console.log('✅ All counters reset to 0');
+      console.log('✅ Counters reset to 0');
       
       console.log('');
-      console.log('╔═══════════════════════════════════════════════════╗');
-      console.log('✅ NUCLEAR RESET COMPLETE');
+      console.log('═══════════════════════════════════════════════════');
+      console.log('✅ COMPLETE RESET FINISHED');
       console.log(`Total items deleted: ${totalDeleted}`);
-      console.log('╚═══════════════════════════════════════════════════╝');
+      console.log('═══════════════════════════════════════════════════');
       console.log('');
       
       alert(
-        '✅ NUCLEAR RESET SUCCESSFUL!\n\n' +
+        '✅ COMPLETE RESET SUCCESSFUL!\n\n' +
         `• Deleted ${assessmentsSnapshot.size} assessments\n` +
         `• Deleted ${mshScoresSnapshot.size} MSH scores\n` +
         `• Deleted ${cyclesSnapshot.size} cycles\n` +
-        `• Total documents deleted: ${totalDeleted}\n` +
-        '• Reset assessment counter to 0\n' +
-        '• Reset MSH counter to 0\n\n' +
+        '• Reset both counters to 0\n\n' +
         'Database is clean. Ready to create new cycles.'
       );
       
@@ -430,14 +383,14 @@ function DatabaseManagement() {
       
     } catch (error) {
       console.error('');
-      console.error('╔═══════════════════════════════════════════════════╗');
-      console.error('❌ ERROR DURING NUCLEAR RESET');
-      console.error('╚═══════════════════════════════════════════════════╝');
+      console.error('═══════════════════════════════════════════════════');
+      console.error('❌ ERROR DURING RESET');
+      console.error('═══════════════════════════════════════════════════');
       console.error('Error:', error);
       console.error('Stack:', error.stack);
       console.error('');
       
-      alert(`❌ Error during reset: ${error.message}`);
+      alert(`Error: ${error.message}`);
     } finally {
       setProcessing(false);
     }
@@ -483,70 +436,64 @@ function DatabaseManagement() {
         </div>
       </Card>
 
-      {/* Database Statistics - Option C: Total + Breakdowns */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        
-        {/* 1. Total Transactional Documents (Primary Validation) */}
-        <Card className="bg-white border-2 border-blue-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-4xl font-bold text-blue-600">{stats.totalTransactionalDocs}</div>
-              <div className="text-sm text-gray-600 font-semibold">Total Documents</div>
-              <div className="text-xs text-gray-500 mt-1">All transactional records</div>
-            </div>
-            <Layers className="w-12 h-12 text-blue-500" />
-          </div>
-        </Card>
-
-        {/* 2. Assessment Forms (Breakdown) */}
+      {/* Database Statistics */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card className="bg-white">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-3xl font-bold text-indigo-600">{stats.totalAssessments}</div>
-              <div className="text-sm text-gray-600 font-medium">Assessment Forms</div>
-              <div className="text-xs text-gray-500 mt-1">
-                {stats.pendingAssessments} pending • {stats.completedAssessments} done
-              </div>
+              <div className="text-2xl font-bold text-gray-900">{stats.totalAssessments}</div>
+              <div className="text-sm text-gray-600">Assessments</div>
+              <div className="text-xs text-gray-500 mt-1">Forms</div>
             </div>
-            <FileText className="w-10 h-10 text-indigo-500" />
+            <FileText className="w-8 h-8 text-blue-500" />
           </div>
         </Card>
 
-        {/* 3. MSH Scores (Breakdown) */}
         <Card className="bg-white">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-3xl font-bold text-purple-600">{stats.totalMshScores}</div>
-              <div className="text-sm text-gray-600 font-medium">MSH Scores</div>
-              <div className="text-xs text-gray-500 mt-1">Published metrics</div>
+              <div className="text-2xl font-bold text-gray-900">{stats.totalMshScores}</div>
+              <div className="text-sm text-gray-600">MSH Scores</div>
+              <div className="text-xs text-gray-500 mt-1">Published</div>
             </div>
-            <Award className="w-10 h-10 text-purple-500" />
+            <Award className="w-8 h-8 text-purple-500" />
           </div>
         </Card>
 
-        {/* 4. Cycles (Breakdown) */}
         <Card className="bg-white">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-3xl font-bold text-green-600">{stats.totalCycles}</div>
-              <div className="text-sm text-gray-600 font-medium">Cycles</div>
-              <div className="text-xs text-gray-500 mt-1">Assessment periods</div>
+              <div className="text-2xl font-bold text-gray-900">{stats.totalCycles}</div>
+              <div className="text-sm text-gray-600">Cycles</div>
+              <div className="text-xs text-gray-500 mt-1">Months</div>
             </div>
-            <Calendar className="w-10 h-10 text-green-500" />
+            <Archive className="w-8 h-8 text-green-500" />
           </div>
         </Card>
 
-        {/* 5. Current MSH Counter */}
         <Card className="bg-white">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-3xl font-bold text-orange-600">
+              <div className="text-2xl font-bold text-gray-900">
                 MSH{stats.currentMSH}
               </div>
-              <div className="text-sm text-gray-600 font-medium">Current MSH</div>
+              <div className="text-sm text-gray-600">Current MSH</div>
               <div className="text-xs text-gray-500 mt-1">Last published</div>
             </div>
-            <Hash className="w-10 h-10 text-orange-500" />
+            <Database className="w-8 h-8 text-purple-500" />
+          </div>
+        </Card>
+
+        <Card className="bg-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-2xl font-bold text-gray-900">
+                MSH{stats.currentMSH + 1}
+              </div>
+              <div className="text-sm text-gray-600">Next MSH</div>
+              <div className="text-xs text-gray-500 mt-1">Will assign</div>
+            </div>
+            <Database className="w-8 h-8 text-blue-500" />
           </div>
         </Card>
       </div>
@@ -566,9 +513,9 @@ function DatabaseManagement() {
         <div className="space-y-4">
           {/* Delete All Assessments */}
           <div className="bg-white rounded-lg p-4 border border-red-200">
-            <h3 className="font-semibold text-gray-900 mb-2">Delete All Assessment Forms</h3>
+            <h3 className="font-semibold text-gray-900 mb-2">Delete All Assessments</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Removes all {stats.totalAssessments} assessment forms and resets assessment counter to 0. 
+              Removes all {stats.totalAssessments} assessment forms and resets assessment counter. 
               MSH scores and cycles are preserved.
             </p>
             <Button
@@ -577,8 +524,8 @@ function DatabaseManagement() {
               disabled={processing || stats.totalAssessments === 0}
               className="w-full justify-center"
             >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Delete {stats.totalAssessments} Assessment Forms
+              <Trash2 className="w-4 h-4" />
+              Delete {stats.totalAssessments} Assessments
             </Button>
           </div>
 
@@ -586,8 +533,8 @@ function DatabaseManagement() {
           <div className="bg-white rounded-lg p-4 border border-red-200">
             <h3 className="font-semibold text-gray-900 mb-2">Delete All MSH Scores</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Removes all {stats.totalMshScores} published MSH scores and resets MSH counter to 0. 
-              Assessment forms and cycles are preserved.
+              Removes all {stats.totalMshScores} published MSH scores and resets MSH counter. 
+              Assessments and cycles are preserved.
             </p>
             <Button
               variant="danger"
@@ -595,7 +542,7 @@ function DatabaseManagement() {
               disabled={processing || stats.totalMshScores === 0}
               className="w-full justify-center"
             >
-              <Trash2 className="w-4 h-4 mr-2" />
+              <Trash2 className="w-4 h-4" />
               Delete {stats.totalMshScores} MSH Scores
             </Button>
           </div>
@@ -604,7 +551,7 @@ function DatabaseManagement() {
           <div className="bg-white rounded-lg p-4 border border-red-200">
             <h3 className="font-semibold text-gray-900 mb-2">Delete All Cycles</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Removes all {stats.totalCycles} assessment cycles. Assessment forms and MSH scores are preserved.
+              Removes all {stats.totalCycles} assessment cycles. Assessments and MSH scores are preserved.
             </p>
             <Button
               variant="danger"
@@ -612,25 +559,24 @@ function DatabaseManagement() {
               disabled={processing || stats.totalCycles === 0}
               className="w-full justify-center"
             >
-              <Trash2 className="w-4 h-4 mr-2" />
+              <Trash2 className="w-4 h-4" />
               Delete {stats.totalCycles} Cycles
             </Button>
           </div>
 
-          {/* Complete Nuclear Reset */}
-          <div className="bg-red-100 rounded-lg p-4 border-2 border-red-400">
+          {/* Complete Reset */}
+          <div className="bg-red-100 rounded-lg p-4 border-2 border-red-300">
             <h3 className="font-semibold text-red-900 mb-2 flex items-center gap-2">
-              🚨 Complete Nuclear Reset
+              ⚡ Complete Nuclear Reset
             </h3>
             <p className="text-sm text-red-800 mb-4">
-              <strong>Deletes ALL transactional data ({stats.totalTransactionalDocs} documents):</strong>
-              <br/>• {stats.totalAssessments} assessment forms
-              <br/>• {stats.totalMshScores} MSH scores
+              <strong>Deletes EVERYTHING:</strong>
+              <br/>• {stats.totalAssessments} assessments (forms)
+              <br/>• {stats.totalMshScores} MSH scores (published metrics)
               <br/>• {stats.totalCycles} cycles
-              <br/>• Resets assessment counter to 0
-              <br/>• Resets MSH counter to 0
+              <br/>• Resets both counters to 0
               <br/><br/>
-              <strong>Preserved:</strong> Users, organizational structure, pillars
+              Users and organizational structure are preserved.
             </p>
             <Button
               variant="danger"
@@ -640,13 +586,13 @@ function DatabaseManagement() {
             >
               {processing ? (
                 <>
-                  <RefreshCw className="w-4 h-4 animate-spin mr-2" />
-                  Processing Nuclear Reset...
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Processing Reset...
                 </>
               ) : (
                 <>
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Complete Nuclear Reset ({stats.totalTransactionalDocs} docs)
+                  <Trash2 className="w-4 h-4" />
+                  Complete Nuclear Reset
                 </>
               )}
             </Button>
@@ -654,14 +600,14 @@ function DatabaseManagement() {
         </div>
       </Card>
 
-      {/* Info Footer */}
-      <Card className="bg-blue-50 border border-blue-200">
+      {/* Warning Footer */}
+      <Card className="bg-yellow-50 border border-yellow-200">
         <div className="flex items-start gap-3">
-          <Database className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-blue-900">
-            <strong className="font-semibold">Database Validation:</strong> Total Documents shows all transactional records 
-            ({stats.totalAssessments} assessments + {stats.totalMshScores} MSH scores + {stats.totalCycles} cycles). 
-            Use this to validate that Nuclear Reset clears everything (should show 0 after reset).
+          <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-yellow-800">
+            <strong className="font-semibold">Schema Update:</strong> The system now separates 
+            <strong> Assessments</strong> (forms) from <strong> MSH Scores</strong> (published metrics). 
+            Use "Complete Nuclear Reset" to clear everything and start fresh with the new Ringleader system.
           </div>
         </div>
       </Card>

@@ -1,451 +1,364 @@
 // 📁 SAVE TO: src/pages/is-os/ISOSHubISL.jsx
-// ISL Hub - Pillar Leader view with team metrics
+// ISL Hub - Complete with 4 KPI Cards, Trends, and Assessment Grids
+// Updated: Cycle-based rolling averages, month-over-month trends
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { 
-  Calendar, Zap, ArrowRight, 
-  TrendingUp, Award, User, Building2, Target, CheckCircle, AlertTriangle
-} from 'lucide-react';
-import Card from '../../components/ui/Card';
-import Button from '../../components/ui/Button';
+import { Compass, Award, Building2, User } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { getPillarDisplayName } from '../../utils/pillarHelpers';
-import AssessmentCycleGrid from '../../components/hubs/AssessmentCycleGrid';
+import HubHeroBanner from '../../components/hubs/HubHeroBanner';
+import KPIStatCard from '../../components/hubs/KPIStatCard';
+import HubTabs from '../../components/hubs/HubTabs';
+import HubMetricsBar from '../../components/hubs/HubMetricsBar';
+import UnifiedAssessmentGrid from '../../components/hubs/UnifiedAssessmentGrid';
+import PublishedMSHScoresGrid from '../../components/hubs/PublishedMSHScoresGrid';
 
 function ISOSHubISL() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   
-  // ==================== CONSTANTS ====================
-  const CYCLE_START_DATE = new Date(2025, 9, 1);
+  const CYCLE_START_DATE = new Date(2025, 9, 1); // Oct 1, 2025
   
-  // ==================== STATE ====================
-  const [activeTab, setActiveTab] = useState('team'); // 'team' or 'myassessments'
+  const [activeTab, setActiveTab] = useState('team');
+  const [myTeamAssessments, setMyTeamAssessments] = useState([]);
+  const [myAssessments, setMyAssessments] = useState([]);
+  const [myMSHScores, setMyMSHScores] = useState([]);
   const [pillarInfo, setPillarInfo] = useState(null);
-  const [gridMembers, setGridMembers] = useState([]);
-  const [allAssessments, setAllAssessments] = useState([]); // NEW: Store all assessments
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState({
+    // Cycle info
     cycleNumber: 1,
-    cycleInYear: 1,
-    cycleMonth: 1,
-    assessmentType: '1x1',
-    currentMonthName: 'October 2025',
-    deadline: null,
-    isPastDeadline: false,
-    totalAssessmentsNeeded: 0,
-    completedAssessments: 0,
-    myLastAssessment: null,
-    myComposite: null,
-    myLastAssessed: null,
-    pillarAvgComposite: 0,
-    pillarTier: 'Low',
-    pillarTrend: 'stable',
-    teamSize: 0,
-    pillarZones: { below: 0, baseline: 0, above: 0, exceptional: 0 },
-    assessedThisMonth: 0,
-    alignmentRate: 0
+    cycleType: '1x1',
+    currentMonth: 'OCTOBER 2025',
+    
+    // ISOS Compass (org-wide)
+    isosCompass: null,
+    isosCompassTrend: null,
+    isosCompassRolling: null,
+    
+    // ISL Leadership (ISL layer)
+    islLeadership: null,
+    islLeadershipTrend: null,
+    islLeadershipRolling: null,
+    
+    // Pillar Health (my ISF team)
+    pillarHealth: null,
+    pillarHealthTrend: null,
+    pillarHealthRolling: null,
+    
+    // My Compass (personal)
+    myCompass: null,
+    myCompassTrend: null,
+    myCompassRolling: null,
+    myLatestCycle: null,
+    
+    // Progress tracking
+    completedCount: 0,
+    totalCount: 0
   });
 
-  // ==================== HELPER FUNCTIONS ====================
-  const calculateDeadline = (monthStart) => {
-    let businessDays = 0;
-    let currentDate = new Date(monthStart);
-    
-    while (businessDays < 5) {
-      currentDate.setDate(currentDate.getDate() + 1);
-      const dayOfWeek = currentDate.getDay();
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-        businessDays++;
-      }
-    }
-    
-    return currentDate;
+  // Helper: Calculate average
+  const calcAvg = (scores) => {
+    if (!scores || scores.length === 0) return null;
+    const sum = scores.reduce((a, b) => a + b, 0);
+    return (sum / scores.length).toFixed(1);
   };
 
-  const getCurrentCycleInfo = (date = new Date()) => {
+  // Helper: Get current cycle info
+  const getCycleInfo = (date = new Date()) => {
     const monthsSinceStart = (date.getFullYear() - CYCLE_START_DATE.getFullYear()) * 12 + 
                              (date.getMonth() - CYCLE_START_DATE.getMonth());
     
     const cycleNumber = Math.floor(monthsSinceStart / 3) + 1;
     const cycleMonth = (monthsSinceStart % 3) + 1;
-    const assessmentType = cycleMonth === 3 ? '360' : '1x1';
-    const cycleInYear = ((cycleNumber - 1) % 4) + 1;
+    const cycleType = cycleMonth === 3 ? '360' : '1x1';
     
-    const currentMonthName = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
+    const currentMonth = date.toLocaleDateString('en-US', { 
+      month: 'long', 
+      year: 'numeric' 
+    }).toUpperCase();
     
-    const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
-    const deadline = calculateDeadline(monthStart);
-    const isPastDeadline = date > deadline;
-    
-    return {
-      cycleNumber,
-      cycleInYear,
-      cycleMonth,
-      assessmentType,
-      currentMonthName,
-      deadline,
-      isPastDeadline
-    };
+    return { cycleNumber, cycleMonth, cycleType, currentMonth };
   };
 
-  const getCompositeZone = (score) => {
-    if (score >= 0 && score <= 4) return 'below';
-    if (score >= 5 && score <= 6) return 'baseline';
-    if (score >= 7 && score <= 10) return 'above';
-    if (score >= 11 && score <= 12) return 'exceptional';
-    return 'baseline';
-  };
-
-  const calculateZoneDistribution = (scores) => {
-    const zones = { below: 0, baseline: 0, above: 0, exceptional: 0 };
-    scores.forEach(score => {
-      const zone = getCompositeZone(score);
-      zones[zone]++;
-    });
-    return zones;
-  };
-
-  const getPercentage = (count, total) => {
-    if (total === 0) return '0%';
-    return `${Math.round((count / total) * 100)}%`;
-  };
-
-  const getCompositeZoneName = (score) => {
-    if (score >= 11 && score <= 12) return 'Exceptional';
-    if (score >= 7 && score <= 10) return 'Above Baseline';
-    if (score >= 5 && score <= 6) return 'Baseline';
-    if (score >= 0 && score <= 4) return 'Below Baseline';
-    return 'Not Assessed';
-  };
-
-  // ==================== DATA FETCHING ====================
   useEffect(() => {
-    const fetchPillarData = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true);
         
         const now = new Date();
-        const currentMonth = now.getMonth();
+        const currentMonth = now.getMonth() + 1;
         const currentYear = now.getFullYear();
-        const cycleInfo = getCurrentCycleInfo(now);
+        const cycleInfo = getCycleInfo(now);
         
-        // Find pillar where user is leader
-        const pillarsRef = collection(db, 'pillars');
-        const pillarQuery = query(pillarsRef, where('pillarLeaderId', '==', user.userId));
-        const pillarSnapshot = await getDocs(pillarQuery);
-        
-        if (pillarSnapshot.empty) {
+        // Calculate previous month
+        const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+        const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+
+        // Fetch pillar info
+        const pillarsSnapshot = await getDocs(collection(db, 'pillars'));
+        const userPillar = pillarsSnapshot.docs.find(doc => 
+          doc.data().pillarLeaderId === user.uid
+        );
+
+        if (!userPillar) {
           setLoading(false);
           return;
         }
-        
-        const pillarData = {
-          id: pillarSnapshot.docs[0].id,
-          ...pillarSnapshot.docs[0].data()
-        };
-        setPillarInfo(pillarData);
-        
-        // Fetch all data in parallel
-        const [allUsersSnapshot, allAssessmentsSnapshot] = await Promise.all([
-          getDocs(collection(db, 'users')),
-          getDocs(query(
-            collection(db, 'assessments'),
-            where('cycleMonth', '==', currentMonth + 1),
-            where('cycleYear', '==', currentYear)
-          ))
-        ]);
-        
-        // Build user maps
-        const allUsersMap = {};
-        const userIdToAuthUid = {};
-        const usersByAuthUid = {};
-        
-        allUsersSnapshot.docs.forEach(doc => {
-          const userData = doc.data();
-          allUsersMap[userData.userId] = userData.displayName || 'Unknown';
-          if (userData.userId && doc.id) {
-            userIdToAuthUid[userData.userId] = doc.id;
-            usersByAuthUid[doc.id] = userData;
-          }
+
+        const pillarData = userPillar.data();
+        setPillarInfo({
+          id: userPillar.id,
+          name: pillarData.pillarName,
+          color: pillarData.color
         });
+
+        // Fetch all users
+        const usersSnapshot = await getDocs(collection(db, 'users'));
+        const userMap = {};
+        const islUsers = [];
+        const isfUsers = [];
+        const pillarISFUsers = [];
         
-        // NEW: Process all assessments into standardized format
-        const assessmentsArray = [];
-        allAssessmentsSnapshot.docs.forEach(doc => {
-          const data = doc.data();
-          const employeeData = usersByAuthUid[data.subjectId];
-          const managerData = usersByAuthUid[data.assessorId];
+        usersSnapshot.docs.forEach(doc => {
+          const userData = { id: doc.id, ...doc.data() };
+          userMap[userData.userId] = userData;
           
-          assessmentsArray.push({
-            id: doc.id,
-            employeeId: data.subjectId,
-            employeeName: employeeData?.displayName || 'Unknown',
-            employeeEmail: employeeData?.email || '',
-            employeeLayer: employeeData?.layer || 'Unknown',
-            managerId: data.assessorId,
-            managerName: managerData?.displayName || 'Unknown',
-            cycleTitle: `${cycleInfo.currentMonthName} - ${cycleInfo.assessmentType}`,
-            cycleStartDate: new Date(currentYear, currentMonth, 1),
-            cycleEndDate: new Date(currentYear, currentMonth + 1, 0),
-            dueDate: cycleInfo.deadline,
-            status: data.status || 'pending',
-            compositeScore: data.composite || null,
-            hrpRequested: data.hrpRequested || false,
-            hrpReviewedAt: data.hrpReviewedAt || null,
-            isSelfAssessment: data.isSelfAssessment || false,
-            pillar: employeeData?.pillar,
-            pillarId: employeeData?.pillar,
-            subPillar: employeeData?.subPillar,
-            nineBoxPosition: data.nineBoxPosition || null,
-            mshId: data.mshId || doc.id.slice(0, 8),
-            createdAt: data.createdAt?.toDate?.() || null,
-            completedAt: data.completedAt?.toDate?.() || null
-          });
-        });
-        
-        console.log('ISL - Total assessments transformed:', assessmentsArray.length);
-        console.log('ISL - Current user UID:', user.uid);
-        console.log('ISL - Sample assessment:', assessmentsArray[0]);
-        
-        setAllAssessments(assessmentsArray);
-        
-        // Group assessments by subject
-        const assessmentsBySubject = {};
-        allAssessmentsSnapshot.docs.forEach(doc => {
-          const assessmentData = {
-            id: doc.id,
-            ...doc.data(),
-            createdAt: doc.data().createdAt?.toDate?.() || null,
-            completedAt: doc.data().completedAt?.toDate?.() || null
-          };
-          
-          const subjectId = assessmentData.subjectId;
-          if (!assessmentsBySubject[subjectId]) {
-            assessmentsBySubject[subjectId] = [];
-          }
-          assessmentsBySubject[subjectId].push(assessmentData);
-        });
-        
-        // Get pillar members
-        const usersRef = collection(db, 'users');
-        const pillarMembersQuery = query(
-          usersRef,
-          where('pillar', '==', pillarData.pillarId)
-        );
-        const membersSnapshot = await getDocs(pillarMembersQuery);
-        
-        const allMembers = [];
-        
-        for (const doc of membersSnapshot.docs) {
-          const memberData = doc.data();
-          
-          // Skip self
-          if (memberData.userId === user.userId) continue;
-          
-          // Get assessor info
-          const assessorUserId = memberData.managerId || user.userId;
-          const assessorAuthUid = userIdToAuthUid[assessorUserId] || user.uid;
-          const assessorName = allUsersMap[assessorUserId] || 'Unknown';
-          
-          // Get member's Firebase auth UID
-          const memberAuthUid = userIdToAuthUid[memberData.userId];
-          if (!memberAuthUid) continue;
-          
-          // Get assessments for this member
-          const memberAssessments = assessmentsBySubject[memberAuthUid] || [];
-          
-          let latestAssessment = null;
-          
-          if (memberAssessments.length > 0) {
-            const sortedAssessments = memberAssessments.sort((a, b) => {
-              const aTime = a.createdAt || new Date(0);
-              const bTime = b.createdAt || new Date(0);
-              return bTime - aTime;
-            });
-            
-            // Look for pending assessment first
-            const pendingAssessment = sortedAssessments.find(a => a.status === 'pending');
-            
-            if (pendingAssessment) {
-              latestAssessment = pendingAssessment;
-            } else {
-              // Look for completed assessments by the correct assessor
-              const completedAssessments = sortedAssessments
-                .filter(a => {
-                  return a.completedAt && 
-                         a.assessorId === assessorAuthUid && 
-                         (a.status === 'completed' || a.status === 'not-aligned');
-                })
-                .sort((a, b) => b.completedAt - a.completedAt);
-              
-              if (completedAssessments.length > 0) {
-                latestAssessment = completedAssessments[0];
-              }
+          if (userData.layer === 'ISL') {
+            islUsers.push(userData);
+          } else if (userData.layer === 'ISF') {
+            isfUsers.push(userData);
+            if (userData.pillar === userPillar.id) {
+              pillarISFUsers.push(userData);
             }
           }
+        });
 
-          // Get sub-pillar
-          let memberSubPillar = 'Unassigned';
-          if (memberData.subPillar) {
-            memberSubPillar = memberData.subPillar;
-          } else if (pillarData.subPillars) {
-            for (const [subPillarKey, subPillarData] of Object.entries(pillarData.subPillars)) {
-              if (subPillarData.memberIds?.includes(memberData.userId)) {
-                memberSubPillar = subPillarData.name || subPillarKey;
-                break;
-              }
-            }
-          }
+        // Fetch MSH scores (for rolling averages)
+        const mshSnapshot = await getDocs(query(
+          collection(db, 'mshScores'),
+          where('publishedAt', '>=', Timestamp.fromDate(CYCLE_START_DATE))
+        ));
 
-          const memberInfo = {
-            id: memberData.userId,
-            name: memberData.displayName || 'Unknown',
-            email: memberData.email || '',
-            layer: memberData.layer || 'ISF',
-            pillarRole: memberData.pillarRole || 'Team Member',
-            subPillar: memberSubPillar,
-            pillarId: pillarData.pillarId,
-            managerId: memberData.managerId,
-            assessorName: assessorName,
-            isSupervisor: memberData.flags?.isSupervisor || false,
-            isDirectReport: memberData.managerId === user.userId,
-            currentAssessment: latestAssessment,
-            teamSize: 0
-          };
-          
-          allMembers.push(memberInfo);
-        }
+        const allMSH = mshSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          publishedAt: doc.data().publishedAt?.toDate()
+        }));
+
+        // Group MSH scores
+        const orgMSH = allMSH;
+        const islMSH = allMSH.filter(m => islUsers.some(u => u.userId === m.subjectId));
+        const pillarMSH = allMSH.filter(m => pillarISFUsers.some(u => u.userId === m.subjectId));
+        const myMSH = allMSH.filter(m => m.subjectId === user.uid);
+
+        // Current month scores
+        const currentMonthOrg = orgMSH
+          .filter(m => m.cycleMonth === currentMonth && m.cycleYear === currentYear)
+          .map(m => m.composite);
         
-        setGridMembers(allMembers);
+        const currentMonthISL = islMSH
+          .filter(m => m.cycleMonth === currentMonth && m.cycleYear === currentYear)
+          .map(m => m.composite);
         
-        // Get ISL's own assessment
-        let myLastAssessment = null;
-        let myComposite = null;
-        let myLastAssessed = null;
+        const currentMonthPillar = pillarMSH
+          .filter(m => m.cycleMonth === currentMonth && m.cycleYear === currentYear)
+          .map(m => m.composite);
         
-        const myAssessments = assessmentsBySubject[user.uid] || [];
-        const sortedMyAssessments = myAssessments
-          .filter(a => a.composite && (a.status === 'completed' || a.status === 'not-aligned'))
-          .sort((a, b) => {
-            const aTime = a.createdAt || new Date(0);
-            const bTime = b.createdAt || new Date(0);
-            return bTime - aTime;
+        const currentMonthMy = myMSH
+          .filter(m => m.cycleMonth === currentMonth && m.cycleYear === currentYear)
+          .map(m => m.composite);
+
+        // Previous month scores
+        const prevMonthOrg = orgMSH
+          .filter(m => m.cycleMonth === prevMonth && m.cycleYear === prevYear)
+          .map(m => m.composite);
+        
+        const prevMonthISL = islMSH
+          .filter(m => m.cycleMonth === prevMonth && m.cycleYear === prevYear)
+          .map(m => m.composite);
+        
+        const prevMonthPillar = pillarMSH
+          .filter(m => m.cycleMonth === prevMonth && m.cycleYear === prevYear)
+          .map(m => m.composite);
+        
+        const prevMonthMy = myMSH
+          .filter(m => m.cycleMonth === prevMonth && m.cycleYear === prevYear)
+          .map(m => m.composite);
+
+        // Rolling (YTD) scores
+        const rollingOrg = orgMSH.map(m => m.composite);
+        const rollingISL = islMSH.map(m => m.composite);
+        const rollingPillar = pillarMSH.map(m => m.composite);
+        const rollingMy = myMSH.map(m => m.composite);
+
+        // Calculate metrics with "---" fallback for trends
+        const isosCompass = calcAvg(currentMonthOrg);
+        const prevIsosCompass = calcAvg(prevMonthOrg);
+        const isosCompassTrend = (isosCompass && prevIsosCompass)
+          ? parseFloat((parseFloat(isosCompass) - parseFloat(prevIsosCompass)).toFixed(1))
+          : "---";
+        const isosCompassRolling = calcAvg(rollingOrg);
+
+        const islLeadership = calcAvg(currentMonthISL);
+        const prevIslLeadership = calcAvg(prevMonthISL);
+        const islLeadershipTrend = (islLeadership && prevIslLeadership)
+          ? parseFloat((parseFloat(islLeadership) - parseFloat(prevIslLeadership)).toFixed(1))
+          : "---";
+        const islLeadershipRolling = calcAvg(rollingISL);
+
+        const pillarHealth = calcAvg(currentMonthPillar);
+        const prevPillarHealth = calcAvg(prevMonthPillar);
+        const pillarHealthTrend = (pillarHealth && prevPillarHealth)
+          ? parseFloat((parseFloat(pillarHealth) - parseFloat(prevPillarHealth)).toFixed(1))
+          : "---";
+        const pillarHealthRolling = calcAvg(rollingPillar);
+
+        // My Compass - use latest score if no current month
+        const latestScore = myMSH.length > 0 
+          ? myMSH.sort((a, b) => b.publishedAt - a.publishedAt)[0]
+          : null;
+        
+        const myCompass = currentMonthMy.length > 0
+          ? calcAvg(currentMonthMy)
+          : latestScore?.composite?.toString() || null;
+        const prevMyComposite = calcAvg(prevMonthMy);
+        const myCompassTrend = (myCompass && prevMyComposite)
+          ? parseFloat((parseFloat(myCompass) - parseFloat(prevMyComposite)).toFixed(1))
+          : "---";
+        const myCompassRolling = calcAvg(rollingMy);
+
+        // Log calculated trends
+        console.log('📈 Calculated Trends:');
+        console.log(`ISOS Compass: ${isosCompass} (trend: ${isosCompassTrend})`);
+        console.log(`ISL Leadership: ${islLeadership} (trend: ${islLeadershipTrend})`);
+        console.log(`Pillar Health: ${pillarHealth} (trend: ${pillarHealthTrend})`);
+        console.log(`My Compass: ${myCompass} (trend: ${myCompassTrend})`);
+        
+        const myLatestCycle = latestScore 
+          ? `${latestScore.cycleMonth}/${latestScore.cycleYear}`
+          : null;
+
+        // Fetch current month assessments for grid
+        const assessmentsSnapshot = await getDocs(query(
+          collection(db, 'assessments'),
+          where('cycleMonth', '==', currentMonth),
+          where('cycleYear', '==', currentYear)
+        ));
+
+        const allAssessments = assessmentsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate(),
+          completedAt: doc.data().completedAt?.toDate()
+        }));
+
+        // My Team: assessments where I'm the assessor
+        const teamAssessments = allAssessments
+          .filter(a => a.assessorId === user.uid)
+          .map(a => {
+            const subject = userMap[a.subjectId];
+            return {
+              ...a,
+              name: subject?.displayName || 'Unknown',
+              email: subject?.email || '',
+              layer: subject?.layer || 'ISF',
+              pillar: subject?.pillar,
+              subPillar: subject?.subPillar,
+              isMyAssessment: true
+            };
           });
-        
-        if (sortedMyAssessments.length > 0) {
-          const latest = sortedMyAssessments[0];
-          myLastAssessment = latest;
-          myComposite = latest.composite;
-          if (latest.completedAt) {
-            myLastAssessed = `${latest.completedAt.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`;
-          }
-        }
 
-        // Calculate pillar metrics
-        const publishedAssessments = allMembers.filter(m => 
-          m.currentAssessment?.composite !== undefined && 
-          (m.currentAssessment.status === 'completed' || m.currentAssessment.status === 'not-aligned')
-        );
-        
-        const pillarScores = publishedAssessments.map(m => m.currentAssessment.composite);
-        const pillarAvgComposite = pillarScores.length > 0
-          ? (pillarScores.reduce((sum, score) => sum + score, 0) / pillarScores.length)
-          : 0;
+        // My Assessments: assessments where I'm the subject
+        const personalAssessments = allAssessments
+          .filter(a => a.subjectId === user.uid)
+          .map(a => {
+            const assessor = userMap[a.assessorId];
+            return {
+              ...a,
+              assessorName: assessor?.displayName || 'Unknown',
+              assessmentType: a.isSelfAssessment ? 'self' : 'manager-down'
+            };
+          });
 
-        const pillarZones = calculateZoneDistribution(pillarScores);
+        setMyTeamAssessments(teamAssessments);
+        setMyAssessments(personalAssessments);
+        setMyMSHScores(myMSH);
 
-        let pillarTier = 'Low';
-        if (pillarAvgComposite >= 9) pillarTier = 'High';
-        else if (pillarAvgComposite >= 5) pillarTier = 'Mid';
-
-        const assessedThisMonth = allMembers.filter(m => {
-          if (!m.currentAssessment?.completedAt) return false;
-          const assessmentDate = m.currentAssessment.completedAt;
-          return assessmentDate.getMonth() === currentMonth && 
-                 assessmentDate.getFullYear() === currentYear &&
-                 (m.currentAssessment.status === 'completed' || m.currentAssessment.status === 'not-aligned');
-        }).length;
-
-        const alignedMembers = publishedAssessments.filter(m => 
-          m.currentAssessment.alignmentStatus === 'aligned'
-        ).length;
-        const alignmentRate = publishedAssessments.length > 0
-          ? Math.round((alignedMembers / publishedAssessments.length) * 100)
-          : 0;
-
-        const totalAssessmentsNeeded = allMembers.length;
-        const completedAssessments = assessedThisMonth;
+        // Count completed MSH scores
+        const completedCount = currentMonthOrg.length;
+        const totalCount = 24; // Expected per month (adjust based on org size)
 
         setMetrics({
           cycleNumber: cycleInfo.cycleNumber,
-          cycleInYear: cycleInfo.cycleInYear,
-          cycleMonth: cycleInfo.cycleMonth,
-          assessmentType: cycleInfo.assessmentType,
-          currentMonthName: cycleInfo.currentMonthName,
-          deadline: cycleInfo.deadline,
-          isPastDeadline: cycleInfo.isPastDeadline,
-          totalAssessmentsNeeded,
-          completedAssessments,
-          myLastAssessment,
-          myComposite,
-          myLastAssessed,
-          pillarAvgComposite: pillarAvgComposite.toFixed(1),
-          pillarTier,
-          pillarTrend: 'stable',
-          teamSize: allMembers.length,
-          pillarZones,
-          assessedThisMonth,
-          alignmentRate
+          cycleType: cycleInfo.cycleType,
+          currentMonth: cycleInfo.currentMonth,
+          
+          isosCompass,
+          isosCompassTrend,
+          isosCompassRolling,
+          
+          islLeadership,
+          islLeadershipTrend,
+          islLeadershipRolling,
+          
+          pillarHealth,
+          pillarHealthTrend,
+          pillarHealthRolling,
+          
+          myCompass,
+          myCompassTrend,
+          myCompassRolling,
+          myLatestCycle,
+          
+          completedCount,
+          totalCount
         });
 
       } catch (error) {
-        console.error('Error fetching pillar data:', error);
+        console.error('Error fetching ISL hub data:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchPillarData();
-  }, [user.userId]);
+    fetchData();
+  }, [user.uid, location.key]);
 
-  // ==================== EVENT HANDLERS ====================
-  const handleStartAssessments = (member) => {
-    // member can be either pillar member object or assessment in My Assessments tab
-    if (member.currentAssessment && member.currentAssessment.id) {
-      navigate(`/is-os/assessments/${metrics.assessmentType}/edit/${member.currentAssessment.id}`);
-    } else {
-      const directReports = gridMembers.filter(m => m.isDirectReport);
-      const firstPending = directReports.find(m => 
-        m.currentAssessment?.status === 'pending' || !m.currentAssessment
-      );
-      
-      if (firstPending) {
-        if (firstPending.currentAssessment?.id) {
-          navigate(`/is-os/assessments/${metrics.assessmentType}/edit/${firstPending.currentAssessment.id}`);
-        } else {
-          navigate(`/is-os/assessments/${metrics.assessmentType}/edit`);
-        }
-      } else {
-        navigate(`/is-os/assessments/${metrics.assessmentType}/edit`);
-      }
-    }
+  const handleStartAssessment = (assessment) => {
+    navigate(`/is-os/assessments/${metrics.cycleType}/edit/${assessment.id}`);
   };
 
   const handleViewAssessment = (assessmentId) => {
     navigate(`/is-os/assessments/view/${assessmentId}`);
   };
 
-  // ==================== RENDER ====================
+  const handleViewScore = (mshId) => {
+    navigate(`/is-os/msh/${mshId}`);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading pillar data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!pillarInfo) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg shadow p-8 max-w-md text-center">
+          <h2 className="text-xl font-bold text-gray-900 mb-2">No Pillar Assigned</h2>
+          <p className="text-gray-600">
+            You don't appear to be assigned as a pillar leader. Please contact your administrator.
+          </p>
         </div>
       </div>
     );
@@ -453,351 +366,131 @@ function ISOSHubISL() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      
-      {/* ==================== HERO BANNER ==================== */}
-      <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white">
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="flex items-center gap-3 mb-6">
-            <Zap className="w-10 h-10" />
-            <div>
-              <h1 className="text-5xl font-bold">IS OS Hub</h1>
-              <p className="text-purple-100 text-lg">
-                ISL View - {pillarInfo ? getPillarDisplayName(pillarInfo.pillarId) : 'Your Pillar'} Leadership
-              </p>
-            </div>
-          </div>
-          
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              
-              <div>
-                <div className="text-purple-200 text-sm mb-1">Assessment Cycle</div>
-                <div className="text-white text-lg font-semibold">
-                  Cycle {metrics.cycleInYear} of 4
-                </div>
-                <div className="text-purple-200 text-sm mt-1">
-                  Type: {metrics.assessmentType}
-                </div>
-              </div>
-              
-              <div className="text-center">
-                <div className="text-purple-200 text-sm mb-1">Current Open Month</div>
-                <div className="text-white text-3xl font-bold flex items-center justify-center gap-2">
-                  <Calendar className="w-8 h-8" />
-                  {metrics.currentMonthName}
-                </div>
-                <div className="text-purple-200 text-sm mt-3">
-                  {metrics.completedAssessments}/{metrics.totalAssessmentsNeeded} assessments completed
-                </div>
-              </div>
-              
-              <div className="text-right">
-                <div className="text-purple-200 text-sm mb-1">Assessment Progress</div>
-                <div className="text-white text-lg font-semibold">
-                  {metrics.completedAssessments}/{metrics.totalAssessmentsNeeded} completed ({getPercentage(metrics.completedAssessments, metrics.totalAssessmentsNeeded)})
-                </div>
-                <div className={`text-sm mt-2 flex items-center justify-end gap-1 ${metrics.isPastDeadline ? 'text-yellow-300' : 'text-purple-200'}`}>
-                  {metrics.isPastDeadline && <AlertTriangle className="w-4 h-4" />}
-                  <span>
-                    {metrics.isPastDeadline ? 'Past Deadline: ' : 'Deadline: '}
-                    {metrics.deadline?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </span>
-                </div>
-                <div className="text-purple-200 text-xs mt-1">
-                  (5 business days from month start)
-                </div>
-              </div>
-              
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Hero Banner */}
+      <HubHeroBanner
+        gradient="indigo"
+        title="ISOS Hub"
+        subtitle={`ISL View - ${pillarInfo.name} Leadership`}
+        icon={Building2}
+      />
+
+      {/* Metrics Bar */}
+      <HubMetricsBar
+        cycleNumber={metrics.cycleNumber}
+        cycleType={metrics.cycleType}
+        currentMonth={metrics.currentMonth}
+        completedCount={metrics.completedCount}
+        totalCount={metrics.totalCount}
+      />
 
       <div className="max-w-7xl mx-auto px-6 py-8">
         
-        {/* ==================== PILLAR METRICS ==================== */}
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-700 mb-4">Pillar Metrics</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            
-            {/* Pillar Leadership Health Card */}
-            <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <h3 className="text-sm font-medium text-gray-600 mb-1">Pillar Leadership Health</h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-5xl font-bold text-gray-900">
-                      {metrics.myComposite || '—'}
-                    </span>
-                    <div className="text-sm text-gray-500 mt-2">
-                      0-12 scale
-                    </div>
-                  </div>
-                </div>
-                <User className="w-8 h-8 text-purple-600" />
-              </div>
-              
-              <div className="mt-4 pt-3 border-t border-purple-200 space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">Cumulative Zone</span>
-                  <span className="font-semibold text-gray-900">
-                    {metrics.myComposite ? getCompositeZoneName(metrics.myComposite) : 'Not Assessed'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">9-Box Position</span>
-                  <span className="font-semibold text-gray-900">
-                    {metrics.myLastAssessment?.nineBoxPosition || 'Not Assessed'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">Last Review</span>
-                  <span className="font-semibold text-gray-900">
-                    {metrics.myLastAssessed || 'Never'}
-                  </span>
-                </div>
-              </div>
-            </Card>
+        {/* 4 KPI Stat Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          
+          {/* ISOS Compass */}
+          <KPIStatCard
+            title="ISOS Compass"
+            value={metrics.isosCompass || "—"}
+            maxValue={12}
+            icon={Compass}
+            gradient="blue"
+            trend={metrics.isosCompassTrend}
+            trendLabel="vs last month"
+            metadata={[
+              { label: "YTD Avg", value: metrics.isosCompassRolling || "—" },
+              { label: "Org-Wide", value: "All Layers" }
+            ]}
+          />
 
-            {/* Pillar Health Card */}
-            <Card className="bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-indigo-200">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <h3 className="text-sm font-medium text-gray-600 mb-1">Pillar Health</h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-5xl font-bold text-gray-900">
-                      {metrics.pillarAvgComposite}
-                    </span>
-                    <div className="text-sm text-gray-500 mt-2">
-                      0-12 scale
-                    </div>
-                  </div>
-                </div>
-                <Award className="w-8 h-8 text-indigo-600" />
-              </div>
-              
-              <div className="mt-4 pt-3 border-t border-indigo-200">
-                <div className="space-y-1 text-xs mb-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Below Baseline (0-4):</span>
-                    <span className="font-semibold text-gray-900">
-                      {metrics.pillarZones.below} ({getPercentage(metrics.pillarZones.below, metrics.teamSize)})
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Baseline (5-6):</span>
-                    <span className="font-semibold text-gray-900">
-                      {metrics.pillarZones.baseline} ({getPercentage(metrics.pillarZones.baseline, metrics.teamSize)})
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Above Baseline (7-10):</span>
-                    <span className="font-semibold text-gray-900">
-                      {metrics.pillarZones.above} ({getPercentage(metrics.pillarZones.above, metrics.teamSize)})
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Exceptional (11-12):</span>
-                    <span className="font-semibold text-gray-900">
-                      {metrics.pillarZones.exceptional} ({getPercentage(metrics.pillarZones.exceptional, metrics.teamSize)})
-                    </span>
-                  </div>
-                </div>
-                
-                <div className="pt-3 border-t border-indigo-200 space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">Team Size</span>
-                    <span className="font-semibold text-gray-900">{metrics.teamSize}</span>
-                  </div>
-                </div>
-              </div>
-            </Card>
+          {/* ISL Leadership */}
+          <KPIStatCard
+            title="ISL Leadership"
+            value={metrics.islLeadership || "—"}
+            maxValue={12}
+            icon={Award}
+            gradient="purple"
+            trend={metrics.islLeadershipTrend}
+            trendLabel="vs last month"
+            metadata={[
+              { label: "YTD Avg", value: metrics.islLeadershipRolling || "—" },
+              { label: "Layer", value: "ISL Health" }
+            ]}
+          />
 
-            {/* Monthly Progress Card */}
-            <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-2 border-blue-200">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <h3 className="text-sm font-medium text-gray-600 mb-1">Monthly Progress</h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-5xl font-bold text-gray-900">
-                      {metrics.assessedThisMonth}
-                    </span>
-                    <div className="text-sm text-gray-500 mt-2">
-                      / {metrics.totalAssessmentsNeeded}
-                    </div>
-                  </div>
-                </div>
-                <CheckCircle className="w-8 h-8 text-blue-600" />
-              </div>
-              <div className="mt-4 pt-3 border-t border-blue-200 space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">Completion Rate</span>
-                  <span className="font-semibold text-gray-900">
-                    {getPercentage(metrics.assessedThisMonth, metrics.totalAssessmentsNeeded)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">Alignment Rate</span>
-                  <span className="font-semibold text-gray-900">{metrics.alignmentRate}%</span>
-                </div>
-              </div>
-            </Card>
+          {/* Pillar Health */}
+          <KPIStatCard
+            title={`${pillarInfo.name} Health`}
+            value={metrics.pillarHealth || "—"}
+            maxValue={12}
+            icon={Building2}
+            gradient="green"
+            trend={metrics.pillarHealthTrend}
+            trendLabel="vs last month"
+            metadata={[
+              { label: "YTD Avg", value: metrics.pillarHealthRolling || "—" },
+              { label: "Pillar", value: pillarInfo.name }
+            ]}
+          />
 
-          </div>
+          {/* My Compass */}
+          <KPIStatCard
+            title="My Compass"
+            value={metrics.myCompass || "—"}
+            maxValue={12}
+            icon={User}
+            gradient="orange"
+            trend={metrics.myCompassTrend}
+            trendLabel="vs last month"
+            metadata={[
+              { label: "YTD Avg", value: metrics.myCompassRolling || "—" },
+              { label: "Latest", value: metrics.myLatestCycle || "N/A" }
+            ]}
+          />
+
         </div>
 
-        {/* ==================== NEW: TABBED ASSESSMENT VIEWS ==================== */}
+        {/* Assessment Grids with Tabs */}
         <div className="mb-8">
-          {/* Tab Navigation */}
-          <div className="border-b border-gray-200 mb-6">
-            <nav className="flex gap-8">
-              <button
-                onClick={() => setActiveTab('team')}
-                className={`pb-4 px-1 font-medium text-sm border-b-2 transition-colors ${
-                  activeTab === 'team'
-                    ? 'border-indigo-600 text-indigo-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                My Team
-              </button>
-              <button
-                onClick={() => setActiveTab('myassessments')}
-                className={`pb-4 px-1 font-medium text-sm border-b-2 transition-colors ${
-                  activeTab === 'myassessments'
-                    ? 'border-indigo-600 text-indigo-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                My Assessments
-              </button>
-            </nav>
-          </div>
+          <HubTabs
+            tabs={[
+              { id: 'team', label: 'My Team', count: myTeamAssessments.length },
+              { id: 'myassessments', label: 'My Assessments', count: myAssessments.length },
+              { id: 'msh', label: 'My MSH History', count: myMSHScores.length }
+            ]}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+          />
 
-          {/* Tab Content */}
           {activeTab === 'team' && (
-            <AssessmentCycleGrid
-              members={gridMembers}
-              assessmentType={metrics.assessmentType}
-              currentMonthName={metrics.currentMonthName}
-              onStartAssessments={handleStartAssessments}
+            <UnifiedAssessmentGrid
+              assessments={myTeamAssessments}
+              onStartAssessment={handleStartAssessment}
               onViewAssessment={handleViewAssessment}
-              showStartButton={true}
-              emptyStateMessage="No team members found"
-              showPillarColumn={false}
-              showSubPillarColumn={true}
-              showTeamSizeColumn={false}
-              showAssessorColumn={true}
-              showHRPColumn={true}
+              emptyStateMessage="No team assessments for current cycle"
+              isMyAssessmentsTab={false}
+              currentUserId={user.uid}
             />
           )}
 
           {activeTab === 'myassessments' && (
-            <AssessmentCycleGrid
-              members={(() => {
-                // Transform assessments where current user is the subject
-                const myAssessments = allAssessments.filter(a => a.employeeId === user.uid);
-                console.log('ISL - My Assessments filtered:', myAssessments.length, 'User UID:', user.uid);
-                
-                return myAssessments.map(assessment => ({
-                  id: assessment.id,
-                  name: assessment.isSelfAssessment ? 'Self-Assessment' : 'Manager Assessment',
-                  email: user.email || '',
-                  layer: 'ISL',
-                  pillarRole: 'Pillar Leader',
-                  subPillar: assessment.subPillar || 'N/A',
-                  pillarId: assessment.pillarId,
-                  assessorName: assessment.managerName,
-                  isDirectReport: true,
-                  currentAssessment: {
-                    id: assessment.id,
-                    status: assessment.status,
-                    composite: assessment.compositeScore,
-                    alignmentStatus: assessment.status === 'not-aligned' ? 'not-aligned' : 'aligned',
-                    nineBoxPosition: assessment.nineBoxPosition,
-                    mshId: assessment.mshId,
-                    hrpRequested: assessment.hrpRequested,
-                    hrpReviewedAt: assessment.hrpReviewedAt
-                  },
-                  teamSize: 0
-                }));
-              })()}
-              assessmentType={metrics.assessmentType}
-              currentMonthName={metrics.currentMonthName}
-              onStartAssessments={handleStartAssessments}
+            <UnifiedAssessmentGrid
+              assessments={myAssessments}
+              onStartAssessment={handleStartAssessment}
               onViewAssessment={handleViewAssessment}
-              showStartButton={true}
-              emptyStateMessage="No assessments assigned to you yet"
-              showPillarColumn={false}
-              showSubPillarColumn={false}
-              showTeamSizeColumn={false}
-              showAssessorColumn={true}
-              showHRPColumn={true}
+              emptyStateMessage="No assessments assigned to you"
+              isMyAssessmentsTab={true}
+              currentUserId={user.uid}
             />
           )}
-        </div>
 
-        {/* ==================== QUICK ACTIONS ==================== */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="bg-gradient-to-br from-indigo-50 to-purple-50">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 mb-2">Pillar Dashboard</h3>
-                <p className="text-sm text-gray-600">
-                  Team performance trends and insights
-                </p>
-              </div>
-              <Building2 className="w-8 h-8 text-indigo-600" />
-            </div>
-            <Button 
-              variant="secondary" 
-              className="w-full mt-4"
-              onClick={() => alert('Pillar Dashboard coming soon!')}
-            >
-              View Dashboard
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </Button>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-blue-50 to-cyan-50">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 mb-2">Team Analytics</h3>
-                <p className="text-sm text-gray-600">
-                  Historical trends and predictive insights
-                </p>
-              </div>
-              <TrendingUp className="w-8 h-8 text-blue-600" />
-            </div>
-            <Button 
-              variant="secondary" 
-              className="w-full mt-4"
-              onClick={() => alert('Team Analytics coming soon!')}
-            >
-              View Analytics
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </Button>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-purple-50 to-pink-50">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 mb-2">Development Plans</h3>
-                <p className="text-sm text-gray-600">
-                  Track team growth and career development
-                </p>
-              </div>
-              <Target className="w-8 h-8 text-purple-600" />
-            </div>
-            <Button 
-              variant="secondary" 
-              className="w-full mt-4"
-              onClick={() => alert('Development Plans coming soon!')}
-            >
-              View Plans
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </Button>
-          </Card>
+          {activeTab === 'msh' && (
+            <PublishedMSHScoresGrid
+              mshScores={myMSHScores}
+              onViewScore={handleViewScore}
+              emptyStateMessage="No published MSH scores yet"
+            />
+          )}
         </div>
 
       </div>

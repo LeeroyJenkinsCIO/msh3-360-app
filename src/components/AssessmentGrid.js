@@ -2,9 +2,14 @@ import React from 'react';
 
 export default function AssessmentGrid({ scores, onScoreChange }) {
   
+  // Safe score reading helper
+  const getScore = (domain, dimension) => {
+    return scores?.[domain]?.[dimension] ?? 1;
+  };
+
   const calculateNineBoxPosition = (scores) => {
-    const totalContribution = scores.culture.contribution + scores.competencies.contribution + scores.execution.contribution;
-    const totalGrowth = scores.culture.growth + scores.competencies.growth + scores.execution.growth;
+    const totalContribution = getScore('culture', 'contribution') + getScore('competencies', 'contribution') + getScore('execution', 'contribution');
+    const totalGrowth = getScore('culture', 'growth') + getScore('competencies', 'growth') + getScore('execution', 'growth');
     const composite = totalContribution + totalGrowth;
 
     let growthLevel, contribLevel;
@@ -17,7 +22,7 @@ export default function AssessmentGrid({ scores, onScoreChange }) {
     else if (totalGrowth <= 4) growthLevel = 'mid';
     else growthLevel = 'high';
 
-    if (composite >= 11 && growthLevel === 'high' && contribLevel === 'high') return 'Transformative Outcomes';
+    if (composite >= 11 && growthLevel === 'high' && contribLevel === 'high') return 'Transformative Outcome';
     
     if (growthLevel === 'high' && contribLevel === 'low') return 'Raw Talent';
     if (growthLevel === 'high' && contribLevel === 'mid') return 'High Impact';
@@ -76,7 +81,7 @@ export default function AssessmentGrid({ scores, onScoreChange }) {
         color: '#3b82f6',
         description: 'Trusted performer delivering consistent, measurable outcomes that elevate the team.'
       },
-      'Transformative Outcomes': {
+      'Transformative Outcome': {
         zone: 'Exceptional (11-12): Transformational Zone',
         color: '#f59e0b',
         description: 'Sustained excellence across all domains; delivers enterprise-level impact and shapes the future of IS.'
@@ -85,22 +90,26 @@ export default function AssessmentGrid({ scores, onScoreChange }) {
     return descriptions[position] || descriptions['Status Quo'];
   };
 
-  const totalContribution = scores.culture.contribution + scores.competencies.contribution + scores.execution.contribution;
-  const totalGrowth = scores.culture.growth + scores.competencies.growth + scores.execution.growth;
+  const totalContribution = getScore('culture', 'contribution') + getScore('competencies', 'contribution') + getScore('execution', 'contribution');
+  const totalGrowth = getScore('culture', 'growth') + getScore('competencies', 'growth') + getScore('execution', 'growth');
   const composite = totalContribution + totalGrowth;
   const position = calculateNineBoxPosition(scores);
   const positionInfo = getPositionDescription(position);
 
+  // Nine-box grid layout (top to bottom, left to right)
   const nineBoxPositions = [
-    { name: 'Raw Talent', row: 2, col: 0, label: 'Raw\nTalent' },
-    { name: 'High Impact', row: 2, col: 1, label: 'High\nImpact' },
-    { name: 'Transformative Outcomes', row: 2, col: 2, label: 'Transformational\nOutcomes' },
+    // Top row (high growth)
+    { name: 'Raw Talent', row: 0, col: 0, label: 'Raw\nTalent' },
+    { name: 'High Impact', row: 0, col: 1, label: 'High\nImpact' },
+    { name: 'Transformative Outcome', row: 0, col: 2, label: 'Transformative\nOutcome' },
+    // Middle row (mid growth)
     { name: 'Narrow Contributor', row: 1, col: 0, label: 'Narrow\nContributor' },
     { name: 'Status Quo', row: 1, col: 1, label: 'Status\nQuo' },
     { name: 'Developing Driver', row: 1, col: 2, label: 'Developing\nDriver' },
-    { name: 'Critical Risk', row: 0, col: 0, label: 'Critical\nRisk' },
-    { name: 'Inconsistent', row: 0, col: 1, label: 'Inconsistent' },
-    { name: 'Untapped Potential', row: 0, col: 2, label: 'Untapped\nPotential' }
+    // Bottom row (low growth)
+    { name: 'Critical Risk', row: 2, col: 0, label: 'Critical\nRisk' },
+    { name: 'Inconsistent', row: 2, col: 1, label: 'Inconsistent' },
+    { name: 'Untapped Potential', row: 2, col: 2, label: 'Untapped\nPotential' }
   ];
 
   return (
@@ -206,17 +215,17 @@ export default function AssessmentGrid({ scores, onScoreChange }) {
                 <span style={{
                   fontSize: '14px',
                   fontWeight: 'bold',
-                  color: scores.culture.contribution === 0 ? '#ef4444' : 
-                         scores.culture.contribution === 1 ? '#f59e0b' : '#10b981'
+                  color: getScore('culture', 'contribution') === 0 ? '#ef4444' : 
+                         getScore('culture', 'contribution') === 1 ? '#f59e0b' : '#10b981'
                 }}>
-                  {scores.culture.contribution}
+                  {getScore('culture', 'contribution')}
                 </span>
               </div>
               <input
                 type="range"
                 min="0"
                 max="2"
-                value={scores.culture.contribution}
+                value={getScore('culture', 'contribution')}
                 onChange={(e) => onScoreChange('culture', 'contribution', e.target.value)}
                 style={{ width: '100%', cursor: 'pointer' }}
               />
@@ -235,17 +244,17 @@ export default function AssessmentGrid({ scores, onScoreChange }) {
                 <span style={{
                   fontSize: '14px',
                   fontWeight: 'bold',
-                  color: scores.culture.growth === 0 ? '#ef4444' : 
-                         scores.culture.growth === 1 ? '#f59e0b' : '#10b981'
+                  color: getScore('culture', 'growth') === 0 ? '#ef4444' : 
+                         getScore('culture', 'growth') === 1 ? '#f59e0b' : '#10b981'
                 }}>
-                  {scores.culture.growth}
+                  {getScore('culture', 'growth')}
                 </span>
               </div>
               <input
                 type="range"
                 min="0"
                 max="2"
-                value={scores.culture.growth}
+                value={getScore('culture', 'growth')}
                 onChange={(e) => onScoreChange('culture', 'growth', e.target.value)}
                 style={{ width: '100%', cursor: 'pointer' }}
               />
@@ -282,17 +291,17 @@ export default function AssessmentGrid({ scores, onScoreChange }) {
                 <span style={{
                   fontSize: '14px',
                   fontWeight: 'bold',
-                  color: scores.competencies.contribution === 0 ? '#ef4444' : 
-                         scores.competencies.contribution === 1 ? '#f59e0b' : '#10b981'
+                  color: getScore('competencies', 'contribution') === 0 ? '#ef4444' : 
+                         getScore('competencies', 'contribution') === 1 ? '#f59e0b' : '#10b981'
                 }}>
-                  {scores.competencies.contribution}
+                  {getScore('competencies', 'contribution')}
                 </span>
               </div>
               <input
                 type="range"
                 min="0"
                 max="2"
-                value={scores.competencies.contribution}
+                value={getScore('competencies', 'contribution')}
                 onChange={(e) => onScoreChange('competencies', 'contribution', e.target.value)}
                 style={{ width: '100%', cursor: 'pointer' }}
               />
@@ -311,17 +320,17 @@ export default function AssessmentGrid({ scores, onScoreChange }) {
                 <span style={{
                   fontSize: '14px',
                   fontWeight: 'bold',
-                  color: scores.competencies.growth === 0 ? '#ef4444' : 
-                         scores.competencies.growth === 1 ? '#f59e0b' : '#10b981'
+                  color: getScore('competencies', 'growth') === 0 ? '#ef4444' : 
+                         getScore('competencies', 'growth') === 1 ? '#f59e0b' : '#10b981'
                 }}>
-                  {scores.competencies.growth}
+                  {getScore('competencies', 'growth')}
                 </span>
               </div>
               <input
                 type="range"
                 min="0"
                 max="2"
-                value={scores.competencies.growth}
+                value={getScore('competencies', 'growth')}
                 onChange={(e) => onScoreChange('competencies', 'growth', e.target.value)}
                 style={{ width: '100%', cursor: 'pointer' }}
               />
@@ -358,17 +367,17 @@ export default function AssessmentGrid({ scores, onScoreChange }) {
                 <span style={{
                   fontSize: '14px',
                   fontWeight: 'bold',
-                  color: scores.execution.contribution === 0 ? '#ef4444' : 
-                         scores.execution.contribution === 1 ? '#f59e0b' : '#10b981'
+                  color: getScore('execution', 'contribution') === 0 ? '#ef4444' : 
+                         getScore('execution', 'contribution') === 1 ? '#f59e0b' : '#10b981'
                 }}>
-                  {scores.execution.contribution}
+                  {getScore('execution', 'contribution')}
                 </span>
               </div>
               <input
                 type="range"
                 min="0"
                 max="2"
-                value={scores.execution.contribution}
+                value={getScore('execution', 'contribution')}
                 onChange={(e) => onScoreChange('execution', 'contribution', e.target.value)}
                 style={{ width: '100%', cursor: 'pointer' }}
               />
@@ -387,17 +396,17 @@ export default function AssessmentGrid({ scores, onScoreChange }) {
                 <span style={{
                   fontSize: '14px',
                   fontWeight: 'bold',
-                  color: scores.execution.growth === 0 ? '#ef4444' : 
-                         scores.execution.growth === 1 ? '#f59e0b' : '#10b981'
+                  color: getScore('execution', 'growth') === 0 ? '#ef4444' : 
+                         getScore('execution', 'growth') === 1 ? '#f59e0b' : '#10b981'
                 }}>
-                  {scores.execution.growth}
+                  {getScore('execution', 'growth')}
                 </span>
               </div>
               <input
                 type="range"
                 min="0"
                 max="2"
-                value={scores.execution.growth}
+                value={getScore('execution', 'growth')}
                 onChange={(e) => onScoreChange('execution', 'growth', e.target.value)}
                 style={{ width: '100%', cursor: 'pointer' }}
               />
@@ -458,13 +467,14 @@ export default function AssessmentGrid({ scores, onScoreChange }) {
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(3, 1fr)',
+              gridTemplateRows: 'repeat(3, 1fr)',
               gap: '8px',
               flex: 1
             }}>
               {nineBoxPositions.map((box) => {
                 const isActive = box.name === position;
                 const boxInfo = getPositionDescription(box.name);
-                const boxColor = boxInfo.color;
+                const boxColor = boxInfo?.color || '#e5e7eb';
                 
                 const needsDarkText = ['#fca5a5', '#a7c4a0', '#06b6d4'].includes(boxColor);
                 const textColor = isActive ? (needsDarkText ? '#1f2937' : 'white') : '#6b7280';
@@ -487,7 +497,9 @@ export default function AssessmentGrid({ scores, onScoreChange }) {
                       lineHeight: '1.3',
                       transition: 'all 0.2s',
                       whiteSpace: 'pre-line',
-                      minHeight: '80px'
+                      minHeight: '80px',
+                      gridRow: box.row + 1,
+                      gridColumn: box.col + 1
                     }}
                   >
                     {box.label}

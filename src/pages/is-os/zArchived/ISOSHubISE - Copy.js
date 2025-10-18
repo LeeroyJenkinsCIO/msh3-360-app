@@ -1,4 +1,4 @@
-// 📍 SAVE TO: src/pages/is-os/ISOSHubISE.js
+// 📁 SAVE TO: src/pages/is-os/ISOSHubISE.js
 // ISE Hub - Executive view with Gold Standard metrics
 
 import React, { useState, useEffect } from 'react';
@@ -25,10 +25,12 @@ function ISOSHubISE() {
   const CYCLE_START_DATE = new Date(2025, 9, 1);
   
   // ==================== STATE ====================
+  const [activeTab, setActiveTab] = useState('team'); // 'team' or 'myassessments'
   const [islMembers, setIslMembers] = useState([]);
   const [isfMembers, setIsfMembers] = useState([]);
   const [pillars, setPillars] = useState([]);
   const [pillarComposites, setPillarComposites] = useState({});
+  const [allAssessments, setAllAssessments] = useState([]); // NEW: Store all assessments
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState({
     cycleNumber: 1,
@@ -194,7 +196,41 @@ function ISOSHubISE() {
           }
         });
         
-        // Group assessments by subject
+        // NEW: Process all assessments into standardized format
+        const assessmentsArray = [];
+        allAssessmentsSnapshot.docs.forEach(doc => {
+          const data = doc.data();
+          const employeeData = usersByUserId[data.subjectId];
+          const managerData = usersByUserId[data.assessorId];
+          
+          assessmentsArray.push({
+            id: doc.id,
+            employeeId: data.subjectId,
+            employeeName: employeeData?.displayName || 'Unknown',
+            employeeTitle: employeeData?.title || '',
+            managerId: data.assessorId,
+            managerName: managerData?.displayName || 'Unknown',
+            cycleTitle: `${cycleInfo.currentMonthName} - ${cycleInfo.assessmentType}`,
+            cycleStartDate: new Date(currentYear, currentMonth - 1, 1),
+            cycleEndDate: new Date(currentYear, currentMonth, 0),
+            dueDate: cycleInfo.deadline,
+            status: data.status || 'pending',
+            compositeScore: data.composite || null,
+            hrpRequested: data.hrpRequested || false,
+            hrpReviewedAt: data.hrpReviewedAt || null,
+            isSelfAssessment: data.isSelfAssessment || false,
+            createdAt: data.createdAt?.toDate?.() || null,
+            completedAt: data.completedAt?.toDate?.() || null
+          });
+        });
+        
+        console.log('Total assessments transformed:', assessmentsArray.length);
+        console.log('Current user UID:', user.uid);
+        console.log('Sample assessment:', assessmentsArray[0]);
+        
+        setAllAssessments(assessmentsArray);
+        
+        // Group assessments by subject (keep existing logic for metrics)
         const assessmentsBySubject = {};
         allAssessmentsSnapshot.docs.forEach(doc => {
           const assessmentData = {
@@ -211,7 +247,7 @@ function ISOSHubISE() {
           assessmentsBySubject[subjectId].push(assessmentData);
         });
         
-        // Build ISL members list
+        // Build ISL members list (keep for metrics)
         const members = [];
         for (const islId of directReportIds) {
           const islData = usersByUserId[islId];
@@ -529,18 +565,27 @@ function ISOSHubISE() {
     navigate(`/is-os/assessments/view/${assessmentId}`);
   };
 
+  const handleStartAssessments = (member) => {
+    // member can be either ISL member object or assessment in My Assessments tab
+    if (member.currentAssessment && member.currentAssessment.id) {
+      navigate(`/is-os/assessments/${metrics.assessmentType}/edit/${member.currentAssessment.id}`);
+    } else {
+      const firstPending = islMembers.find(m => m.currentAssessment?.status === 'pending');
+      
+      if (firstPending && firstPending.currentAssessment) {
+        navigate(`/is-os/assessments/${metrics.assessmentType}/edit/${firstPending.currentAssessment.id}`);
+      } else {
+        navigate(`/is-os/assessments/${metrics.assessmentType}/edit`);
+      }
+    }
+  };
+
   const handleViewPillar = (pillarId) => {
     alert(`Pillar metrics view coming soon! Pillar: ${pillarId}`);
   };
 
-  const handleStartAssessments = () => {
-    const firstPending = islMembers.find(m => m.currentAssessment?.status === 'pending');
-    
-    if (firstPending && firstPending.currentAssessment) {
-      navigate(`/is-os/assessments/${metrics.assessmentType}/edit/${firstPending.currentAssessment.id}`);
-    } else {
-      navigate(`/is-os/assessments/${metrics.assessmentType}/edit`);
-    }
+  const handleExport = (assessments) => {
+    alert(`Export functionality coming soon! ${assessments.length} assessments to export`);
   };
 
   const getPillarMemberCount = (pillar) => {
@@ -882,19 +927,91 @@ function ISOSHubISE() {
           </div>
         </div>
 
-        {/* ==================== ASSESSMENT CYCLE GRID ==================== */}
-        <AssessmentCycleGrid
-          members={islMembers}
-          assessmentType={metrics.assessmentType}
-          currentMonthName={metrics.currentMonthName}
-          onStartAssessments={handleStartAssessments}
-          onViewAssessment={handleViewAssessment}
-          showStartButton={true}
-          emptyStateMessage="No direct reports found"
-          showPillarColumn={true}
-          showTeamSizeColumn={true}
-          showHRPColumn={true}
-        />
+        {/* ==================== NEW: TABBED ASSESSMENT VIEWS ==================== */}
+        <div className="mb-8">
+          {/* Tab Navigation */}
+          <div className="border-b border-gray-200 mb-6">
+            <nav className="flex gap-8">
+              <button
+                onClick={() => setActiveTab('team')}
+                className={`pb-4 px-1 font-medium text-sm border-b-2 transition-colors ${
+                  activeTab === 'team'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                My Team
+              </button>
+              <button
+                onClick={() => setActiveTab('myassessments')}
+                className={`pb-4 px-1 font-medium text-sm border-b-2 transition-colors ${
+                  activeTab === 'myassessments'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                My Assessments
+              </button>
+            </nav>
+          </div>
+
+          {/* Tab Content */}
+          {activeTab === 'team' && (
+            <AssessmentCycleGrid
+              members={islMembers}
+              assessmentType={metrics.assessmentType}
+              currentMonthName={metrics.currentMonthName}
+              onStartAssessments={handleStartAssessments}
+              onViewAssessment={handleViewAssessment}
+              showStartButton={true}
+              emptyStateMessage="No direct reports found"
+              showPillarColumn={true}
+              showTeamSizeColumn={true}
+              showHRPColumn={true}
+            />
+          )}
+
+          {activeTab === 'myassessments' && (
+            <AssessmentCycleGrid
+              members={(() => {
+                // Transform assessments where current user is the subject
+                const myAssessments = allAssessments.filter(a => a.employeeId === user.uid);
+                console.log('My Assessments filtered:', myAssessments.length, 'User UID:', user.uid);
+                
+                return myAssessments.map(assessment => ({
+                  id: assessment.id,
+                  name: assessment.isSelfAssessment ? 'Self-Assessment' : 'Manager Assessment',
+                  email: user.email || '',
+                  layer: 'ISE',
+                  pillar: assessment.pillar,
+                  pillarId: assessment.pillarId,
+                  teamSize: 0,
+                  assessorName: assessment.managerName,
+                  isDirectReport: true,
+                  currentAssessment: {
+                    id: assessment.id,
+                    status: assessment.status,
+                    composite: assessment.compositeScore,
+                    alignmentStatus: assessment.status === 'not-aligned' ? 'not-aligned' : 'aligned',
+                    nineBoxPosition: assessment.nineBoxPosition,
+                    mshId: assessment.mshId || assessment.id.slice(0, 8),
+                    hrpRequested: assessment.hrpRequested,
+                    hrpReviewedAt: assessment.hrpReviewedAt
+                  }
+                }));
+              })()}
+              assessmentType={metrics.assessmentType}
+              currentMonthName={metrics.currentMonthName}
+              onStartAssessments={handleStartAssessments}
+              onViewAssessment={handleViewAssessment}
+              showStartButton={true}
+              emptyStateMessage="No assessments assigned to you yet"
+              showPillarColumn={false}
+              showTeamSizeColumn={false}
+              showHRPColumn={true}
+            />
+          )}
+        </div>
 
         {/* ==================== QUICK ACTIONS ==================== */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

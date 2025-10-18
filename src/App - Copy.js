@@ -1,4 +1,4 @@
-// App.js - Complete with Construction Page Check + ALL role-based hub routing + ISOS Org
+// App.js - Complete with Construction Page Check + ALL role-based hub routing
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -25,9 +25,6 @@ import AssessmentHistory from './pages/is-os/AssessmentHistory';
 import OneOnOneAssessGrid from './pages/is-os/1x1AssessGrid';
 import AssessmentDetailView from './pages/is-os/AssessmentDetailView';
 import HRPAssessmentReview from './pages/is-os/HRPAssessmentReview';
-
-// Import ISOS Org Page
-import ISOSOrgPage from './pages/isos-org/ISOSOrgPage';
 
 // Hub router - routes users to correct hub based on layer/role
 function SimpleHubRouter() {
@@ -144,13 +141,6 @@ function App() {
             
             {/* Quick Align */}
             <Route path="quick-align" element={<UnifiedAssessmentPage />} />
-            
-            {/* ISOS Org - NEW ROUTE */}
-            <Route path="isos-org" element={
-              <ProtectedRoute>
-                <ISOSOrgPage />
-              </ProtectedRoute>
-            } />
             
             {/* Projects */}
             <Route path="projects" element={<ProjectsDashboardPage />} />

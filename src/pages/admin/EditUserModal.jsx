@@ -1,41 +1,18 @@
 // src/pages/admin/EditUserModal.jsx
 import React, { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
-import { updateUser } from '../../utils/firebaseUsers';
-import { getAllPillars, getSubPillarsForPillar } from '../../utils/firebaseConfig';
+import { X, AlertTriangle, Lock } from 'lucide-react';
 
 export default function EditUserModal({ user, onClose, onSave }) {
   const [formData, setFormData] = useState({
     displayName: '',
     email: '',
-    layer: '',
-    pillar: '',
-    subPillar: '',
     pillarRole: '',
     isSupervisor: false,
     isAdmin: false
   });
 
-  const [pillars, setPillars] = useState([]);
-  const [subPillars, setSubPillars] = useState([]);
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
-  const [loadingConfig, setLoadingConfig] = useState(true);
-
-  // Load pillars on mount
-  useEffect(() => {
-    async function loadPillars() {
-      try {
-        const pillarData = await getAllPillars();
-        setPillars(pillarData);
-      } catch (error) {
-        console.error('Error loading pillars:', error);
-      } finally {
-        setLoadingConfig(false);
-      }
-    }
-    loadPillars();
-  }, []);
 
   // Initialize form with user data
   useEffect(() => {
@@ -43,33 +20,12 @@ export default function EditUserModal({ user, onClose, onSave }) {
       setFormData({
         displayName: user.displayName || '',
         email: user.email || '',
-        layer: user.layer || '',
-        pillar: user.pillar || '',
-        subPillar: user.subPillar || '',
-        pillarRole: user.pillarRole || '',
+        pillarRole: user.pillarRole || user.jobTitle || '',
         isSupervisor: user.isSupervisor || user.flags?.isSupervisor || false,
         isAdmin: user.isAdmin || user.flags?.isAdmin || false
       });
     }
   }, [user]);
-
-  // Load sub-pillars when pillar changes
-  useEffect(() => {
-    async function loadSubPillars() {
-      if (formData.pillar) {
-        try {
-          const subPillarData = await getSubPillarsForPillar(formData.pillar);
-          setSubPillars(subPillarData);
-        } catch (error) {
-          console.error('Error loading sub-pillars:', error);
-          setSubPillars([]);
-        }
-      } else {
-        setSubPillars([]);
-      }
-    }
-    loadSubPillars();
-  }, [formData.pillar]);
 
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -77,27 +33,6 @@ export default function EditUserModal({ user, onClose, onSave }) {
     // Clear field-specific errors
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: null }));
-    }
-
-    // Clear pillar/subPillar when role changes to ADMIN, HRP, or ISE
-    if (field === 'layer' && ['ADMIN', 'HRP', 'ISE'].includes(value)) {
-      setFormData(prev => ({ 
-        ...prev, 
-        layer: value,
-        pillar: '', 
-        subPillar: '' 
-      }));
-      // Clear pillar errors for these roles
-      setErrors(prev => ({ 
-        ...prev, 
-        pillar: null,
-        subPillar: null 
-      }));
-    }
-
-    // Clear subPillar when pillar changes
-    if (field === 'pillar') {
-      setFormData(prev => ({ ...prev, subPillar: '' }));
     }
   };
 
@@ -108,15 +43,6 @@ export default function EditUserModal({ user, onClose, onSave }) {
       newErrors.displayName = 'Name is required';
     }
     
-    if (!formData.layer) {
-      newErrors.layer = 'Role is required';
-    }
-
-    // Pillar validation - only required for ISL and ISF roles
-    if (!formData.pillar && ['ISL', 'ISF'].includes(formData.layer)) {
-      newErrors.pillar = 'Pillar is required for ISL and ISF roles';
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -130,8 +56,21 @@ export default function EditUserModal({ user, onClose, onSave }) {
 
     setSaving(true);
     try {
-      // Let parent handle the Firebase update
-      await onSave(user.id, formData);
+      // Prepare data for save - preserve existing fields that aren't editable
+      const updateData = {
+        displayName: formData.displayName,
+        email: user.email, // Keep original email
+        layer: user.layer, // Keep original layer
+        pillar: user.pillar || null, // Keep original pillar
+        subPillar: user.subPillar || null, // Keep original subPillar
+        pillarRole: formData.pillarRole || null,
+        jobTitle: formData.pillarRole || null, // Sync both fields
+        directReportIds: user.directReportIds || [],
+        isSupervisor: formData.isSupervisor,
+        isAdmin: formData.isAdmin
+      };
+
+      await onSave(user.id, updateData);
       onClose();
     } catch (error) {
       console.error('Error saving user:', error);
@@ -162,11 +101,27 @@ export default function EditUserModal({ user, onClose, onSave }) {
           </button>
         </div>
 
+        {/* Warning Banner */}
+        <div className="mx-6 mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <div className="font-semibold text-yellow-900 text-sm mb-1">Limited Edit Mode</div>
+              <div className="text-xs text-yellow-800">
+                Only safe fields can be edited here. Role, Pillar, and Sub-Pillar changes require admin approval 
+                to prevent affecting published MSH assessments. Contact system administrator for structural changes.
+              </div>
+            </div>
+          </div>
+        </div>
+
         <form onSubmit={handleSubmit} className="p-6">
           <div className="space-y-6">
+            {/* Editable Fields */}
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Editable Information</h3>
+              
+              <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Full Name <span className="text-red-500">*</span>
@@ -188,124 +143,22 @@ export default function EditUserModal({ user, onClose, onSave }) {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Email Address <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 cursor-not-allowed"
-                    disabled
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Email cannot be changed for security reasons</p>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Role and Assignment</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Role Type <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={formData.layer}
-                    onChange={(e) => handleChange('layer', e.target.value)}
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                      errors.layer ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    disabled={saving}
-                  >
-                    <option value="">Select role...</option>
-                    <option value="ADMIN">ADMIN - System Administrator</option>
-                    <option value="ISE">ISE - Executive Leadership</option>
-                    <option value="ISL">ISL - Leader</option>
-                    <option value="ISF">ISF - Individual Contributor</option>
-                    <option value="HRP">HRP - HR Partner</option>
-                  </select>
-                  {errors.layer && (
-                    <p className="mt-1 text-sm text-red-600">{errors.layer}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Pillar {['ADMIN', 'HRP', 'ISE'].includes(formData.layer) && <span className="text-gray-500 font-normal">(Optional for {formData.layer})</span>}
-                  </label>
-                  <select
-                    value={formData.pillar}
-                    onChange={(e) => handleChange('pillar', e.target.value)}
-                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                      errors.pillar && !['ADMIN', 'HRP', 'ISE'].includes(formData.layer) ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    disabled={saving || loadingConfig}
-                  >
-                    <option value="">
-                      {['ADMIN', 'HRP', 'ISE'].includes(formData.layer) 
-                        ? 'No Pillar (Valid for this role)'
-                        : 'Select pillar...'}
-                    </option>
-                    {pillars.map(pillar => (
-                      <option key={pillar.id} value={pillar.id}>
-                        {pillar.name}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.pillar && !['ADMIN', 'HRP', 'ISE'].includes(formData.layer) && (
-                    <p className="mt-1 text-sm text-red-600">{errors.pillar}</p>
-                  )}
-                  {['ADMIN', 'HRP', 'ISE'].includes(formData.layer) && (
-                    <p className="mt-1 text-sm text-gray-500">This role does not require pillar assignment</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Sub-Pillar
-                  </label>
-                  <select
-                    value={formData.subPillar}
-                    onChange={(e) => handleChange('subPillar', e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    disabled={!formData.pillar || saving || loadingConfig}
-                  >
-                    <option value="">
-                      {!formData.pillar 
-                        ? 'Select a pillar first...'
-                        : subPillars.length === 0
-                        ? 'This pillar has no sub-pillars'
-                        : 'Select sub-pillar...'}
-                    </option>
-                    {subPillars.map(subPillar => (
-                      <option key={subPillar.id} value={subPillar.id}>
-                        {subPillar.name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-sm text-gray-500">
-                    {!formData.pillar 
-                      ? 'Sub-pillar options will appear after selecting a pillar'
-                      : 'This pillar has no sub-pillar structure - this is normal for some organizational units'}
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Job Title
                   </label>
                   <input
                     type="text"
-                    value={formData.pillarRole || ''}
+                    value={formData.pillarRole}
                     onChange={(e) => handleChange('pillarRole', e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Enter job title..."
                     disabled={saving}
                   />
-                  <p className="mt-1 text-sm text-gray-500">Professional title or role in the organization</p>
+                  <p className="mt-1 text-xs text-gray-500">Professional title or role description</p>
                 </div>
               </div>
             </div>
 
+            {/* Permissions */}
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Permissions</h3>
               <div className="space-y-3">
@@ -346,6 +199,81 @@ export default function EditUserModal({ user, onClose, onSave }) {
                 </label>
               </div>
             </div>
+
+            {/* Read-Only Fields */}
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Lock className="w-4 h-4 text-gray-400" />
+                <span>Protected Fields</span>
+                <span className="text-xs font-normal text-gray-500">(Read Only)</span>
+              </h3>
+              
+              <div className="space-y-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed text-gray-600"
+                    disabled
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    <Lock className="w-3 h-3 inline mr-1" />
+                    Email is the user's unique identifier and cannot be changed
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Role / Layer
+                  </label>
+                  <input
+                    type="text"
+                    value={user.layer || 'Not Set'}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed text-gray-600"
+                    disabled
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    <Lock className="w-3 h-3 inline mr-1" />
+                    Role changes affect assessment eligibility - contact admin
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Pillar
+                  </label>
+                  <input
+                    type="text"
+                    value={user.pillar || 'Not Assigned'}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed text-gray-600"
+                    disabled
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    <Lock className="w-3 h-3 inline mr-1" />
+                    Pillar assignment affects published MSH assessments - contact admin
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Sub-Pillar
+                  </label>
+                  <input
+                    type="text"
+                    value={user.subPillar || user.derivedSubPillar || 'Not Assigned'}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed text-gray-600"
+                    disabled
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    <Lock className="w-3 h-3 inline mr-1" />
+                    Sub-pillar membership managed by pillar leaders
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="flex gap-3 mt-8 pt-6 border-t border-gray-200">
@@ -360,7 +288,7 @@ export default function EditUserModal({ user, onClose, onSave }) {
             <button
               type="submit"
               className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={saving || loadingConfig}
+              disabled={saving}
             >
               {saving ? 'Saving...' : 'Save Changes'}
             </button>

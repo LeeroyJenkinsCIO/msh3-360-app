@@ -1,9 +1,6 @@
-// 📁 SAVE TO: src/components/AssessmentGrid.js
-// Unified scoring grid for Quick Align, 1x1, and 360 assessments
-
 import React from 'react';
 
-function AssessmentGrid({ scores, onScoreChange }) {
+export default function AssessmentGrid({ scores, onScoreChange }) {
   
   const calculateNineBoxPosition = (scores) => {
     const totalContribution = scores.culture.contribution + scores.competencies.contribution + scores.execution.contribution;
@@ -40,49 +37,49 @@ function AssessmentGrid({ scores, onScoreChange }) {
   const getPositionDescription = (position) => {
     const descriptions = {
       'Critical Risk': {
-        zone: 'Below Baseline (0-4)',
+        zone: 'Below Baseline (0-4): Coaching and Support Zone',
         color: '#dc2626',
         description: 'Immediate intervention required; both growth and contribution are below expectations.'
       },
       'Narrow Contributor': {
-        zone: 'Below Baseline (0-4)',
+        zone: 'Below Baseline (0-4): Coaching and Support Zone',
         color: '#fca5a5',
         description: 'Performs reliably within a limited scope; limited adaptability outside familiar territory.'
       },
       'Inconsistent': {
-        zone: 'Below Baseline (0-4)',
+        zone: 'Below Baseline (0-4): Coaching and Support Zone',
         color: '#fca5a5',
         description: 'Delivery fluctuates; needs structure, feedback, and stability to regain consistency.'
       },
       'Untapped Potential': {
-        zone: 'Meets Baseline (5-8)',
+        zone: 'Above Baseline (7-10): High-Performance Zone',
         color: '#06b6d4',
-        description: 'Strong execution but limited growth trajectory; focus on expanding influence.'
+        description: 'Strong contributor needing challenge or scope expansion to sustain growth and engagement.'
       },
       'Status Quo': {
-        zone: 'Meets Baseline (5-8)',
+        zone: 'Baseline (5-6): Reliable Performance Zone',
         color: '#a7c4a0',
-        description: 'Reliable and steady; maintains current role expectations without stretching beyond.'
+        description: 'Dependable, steady performer maintaining contribution and growth expectations.'
       },
       'Developing Driver': {
-        zone: 'Meets Baseline (5-8)',
+        zone: 'Above Baseline (7-10): High-Performance Zone',
         color: '#3b82f6',
-        description: 'Delivers results consistently; beginning to demonstrate leadership potential.'
+        description: 'Combines capability and initiative; drives improvement, collaboration, and influence across functions.'
       },
       'Raw Talent': {
-        zone: 'Exceeds Baseline (9-12)',
+        zone: 'Above Baseline (7-10): High-Performance Zone',
         color: '#06b6d4',
-        description: 'High potential with room to grow; needs targeted development to maximize impact.'
+        description: 'Shows strong curiosity and growth potential; contribution improving but not yet consistent.'
       },
       'High Impact': {
-        zone: 'Exceeds Baseline (9-12)',
+        zone: 'Above Baseline (7-10): High-Performance Zone',
         color: '#3b82f6',
-        description: 'Strong all-around performer ready for increased responsibility and scope.'
+        description: 'Trusted performer delivering consistent, measurable outcomes that elevate the team.'
       },
       'Transformative Outcomes': {
-        zone: 'Exceeds Baseline (9-12)',
+        zone: 'Exceptional (11-12): Transformational Zone',
         color: '#f59e0b',
-        description: 'Top-tier performer driving exceptional results and organizational growth.'
+        description: 'Sustained excellence across all domains; delivers enterprise-level impact and shapes the future of IS.'
       }
     };
     return descriptions[position] || descriptions['Status Quo'];
@@ -107,8 +104,8 @@ function AssessmentGrid({ scores, onScoreChange }) {
   ];
 
   return (
-    <>
-      {/* BOX 1: Assessment Guide Header */}
+    <div style={{ maxWidth: '1200px', margin: '0 auto', backgroundColor: '#f9fafb' }}>
+      {/* Assessment Guide Header */}
       <div style={{
         backgroundColor: 'white',
         borderRadius: '12px',
@@ -133,21 +130,21 @@ function AssessmentGrid({ scores, onScoreChange }) {
           fontSize: '13px'
         }}>
           <div>
-            <h4 style={{ fontWeight: 'bold', color: '#8b5cf6', marginBottom: '4px' }}>
+            <h4 style={{ fontWeight: 'bold', color: '#8b5cf6', marginBottom: '4px', fontSize: '16px' }}>
               Culture
             </h4>
             <p style={{ color: '#6b7280' }}>How we show up.</p>
           </div>
 
           <div>
-            <h4 style={{ fontWeight: 'bold', color: '#3b82f6', marginBottom: '4px' }}>
+            <h4 style={{ fontWeight: 'bold', color: '#f97316', marginBottom: '4px', fontSize: '16px' }}>
               Competencies
             </h4>
             <p style={{ color: '#6b7280' }}>What we know.</p>
           </div>
 
           <div>
-            <h4 style={{ fontWeight: 'bold', color: '#10b981', marginBottom: '4px' }}>
+            <h4 style={{ fontWeight: 'bold', color: '#10b981', marginBottom: '4px', fontSize: '16px' }}>
               Execution
             </h4>
             <p style={{ color: '#6b7280' }}>How we deliver.</p>
@@ -170,17 +167,16 @@ function AssessmentGrid({ scores, onScoreChange }) {
         </div>
       </div>
 
-      {/* BOXES 2-5: Domains (Left) + Compass (Right) */}
+      {/* Domains (Left) + Compass (Right) */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: '1fr 2fr',
         gap: '20px',
-        marginBottom: '20px',
-        position: 'relative'
+        marginBottom: '20px'
       }}>
         {/* LEFT COLUMN: Domains Stacked */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {/* BOX 2: Culture */}
+          {/* Culture */}
           <div style={{
             backgroundColor: 'white',
             borderRadius: '12px',
@@ -256,12 +252,12 @@ function AssessmentGrid({ scores, onScoreChange }) {
             </div>
           </div>
 
-          {/* BOX 3: Competencies */}
+          {/* Competencies */}
           <div style={{
             backgroundColor: 'white',
             borderRadius: '12px',
             boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-            borderTop: '4px solid #3b82f6',
+            borderTop: '4px solid #f97316',
             padding: '16px'
           }}>
             <h3 style={{
@@ -332,7 +328,7 @@ function AssessmentGrid({ scores, onScoreChange }) {
             </div>
           </div>
 
-          {/* BOX 4: Execution */}
+          {/* Execution */}
           <div style={{
             backgroundColor: 'white',
             borderRadius: '12px',
@@ -409,7 +405,7 @@ function AssessmentGrid({ scores, onScoreChange }) {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: MSH³ Compass (Large) */}
+        {/* RIGHT COLUMN: MSH³ Compass */}
         <div style={{
           backgroundColor: 'white',
           borderRadius: '12px',
@@ -417,8 +413,7 @@ function AssessmentGrid({ scores, onScoreChange }) {
           borderTop: '4px solid #f59e0b',
           padding: '24px',
           display: 'flex',
-          flexDirection: 'column',
-          position: 'relative'
+          flexDirection: 'column'
         }}>
           <h3 style={{
             fontSize: '18px',
@@ -436,7 +431,7 @@ function AssessmentGrid({ scores, onScoreChange }) {
             Nine-Box Position
           </p>
 
-          {/* Large 9-Box Grid with Axis Labels */}
+          {/* 9-Box Grid with Axis Labels */}
           <div style={{
             display: 'flex',
             alignItems: 'stretch',
@@ -550,13 +545,12 @@ function AssessmentGrid({ scores, onScoreChange }) {
         </div>
       </div>
 
-      {/* BOX 6: Summary */}
+      {/* Summary */}
       <div style={{
         backgroundColor: 'white',
         borderRadius: '12px',
         boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
         padding: '20px',
-        marginBottom: '20px',
         borderTop: '4px solid #14b8a6'
       }}>
         <h3 style={{
@@ -628,8 +622,6 @@ function AssessmentGrid({ scores, onScoreChange }) {
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
-
-export default AssessmentGrid;

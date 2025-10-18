@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useParams, useNavigate } from 'react-router-dom';
 import AssessmentGrid from '../../components/AssessmentGrid';
 import { Card } from '../../components/ui';
+import PublishConfirmationModal from '../../components/hubs/PublishConfirmationModal';
 
 export default function OneOnOneAssessGrid() {
   const { user } = useAuth();
@@ -31,6 +32,9 @@ export default function OneOnOneAssessGrid() {
   });
   
   const [hrpRequested, setHrpRequested] = useState(false);
+  
+  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
+  const [pendingAlignmentStatus, setPendingAlignmentStatus] = useState(null);
 
   useEffect(() => {
     if (user?.uid) {
@@ -359,6 +363,17 @@ export default function OneOnOneAssessGrid() {
     navigate('/is-os');
   };
 
+  const handlePublishClick = (alignmentStatus) => {
+    setPendingAlignmentStatus(alignmentStatus);
+    setShowPublishConfirm(true);
+  };
+
+  const handleConfirmPublish = async () => {
+    setShowPublishConfirm(false);
+    await handlePublish(pendingAlignmentStatus);
+    setPendingAlignmentStatus(null);
+  };
+
   const handlePublish = async (alignmentStatus) => {
     if (!selectedAssessment) return;
 
@@ -369,6 +384,45 @@ export default function OneOnOneAssessGrid() {
       const assessmentRef = doc(db, 'assessments', selectedAssessment.id);
       
       const mshId = await generateMSHId();
+
+      const mshScoreRef = doc(db, 'mshScores', mshId);
+      await setDoc(mshScoreRef, {
+        mshId,
+        mshType: '1x1',
+        
+        subjectId: selectedAssessment.subjectId,
+        subjectName: selectedAssessment.subjectName || selectedAssessment.assesseeName,
+        
+        assessorId: user.uid,
+        assessorName: user.displayName || user.email,
+        
+        composite,
+        scores: {
+          culture: scores.culture.contribution,
+          mindset: scores.culture.growth,
+          competencies: scores.competencies.contribution,
+          skillset: scores.competencies.growth,
+          execution: scores.execution.contribution,
+          habits: scores.execution.growth
+        },
+        
+        nineBoxPosition,
+        
+        sourceAssessmentIds: [selectedAssessment.id],
+        
+        cycleId: selectedAssessment.cycleId,
+        cycleMonth: selectedAssessment.cycleMonth,
+        cycleYear: selectedAssessment.cycleYear,
+        cycleName: selectedAssessment.cycleName,
+        
+        alignment: alignmentStatus,
+        hrpReviewRequested: hrpRequested,
+        
+        publishedBy: user.uid,
+        publishedAt: serverTimestamp()
+      });
+
+      console.log(`MSH Score created: ${mshId}`);
 
       const updateData = {
         scores,
@@ -602,7 +656,7 @@ export default function OneOnOneAssessGrid() {
 
                 <div className="flex items-center gap-4">
                   <button
-                    onClick={() => handlePublish('aligned')}
+                    onClick={() => handlePublishClick('aligned')}
                     disabled={saving}
                     className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -610,7 +664,7 @@ export default function OneOnOneAssessGrid() {
                   </button>
 
                   <button
-                    onClick={() => handlePublish('not-aligned')}
+                    onClick={() => handlePublishClick('not-aligned')}
                     disabled={saving}
                     className="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -633,6 +687,21 @@ export default function OneOnOneAssessGrid() {
           </div>
         )}
       </div>
+
+      <PublishConfirmationModal
+        isOpen={showPublishConfirm}
+        onClose={() => {
+          setShowPublishConfirm(false);
+          setPendingAlignmentStatus(null);
+        }}
+        onConfirm={handleConfirmPublish}
+        assesseeName={selectedAssessment?.assesseeName}
+        assesseeLayer={selectedAssessment?.layer}
+        assesseeSubPillar={selectedAssessment?.subPillar}
+        composite={calculateComposite()}
+        nineBoxPosition={calculateNineBoxPosition()}
+        alignmentStatus={pendingAlignmentStatus}
+      />
     </div>
   );
 }

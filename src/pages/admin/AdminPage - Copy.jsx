@@ -1,12 +1,17 @@
 // src/pages/admin/AdminPage.jsx
 import React, { useState } from 'react';
-import { Database, Users, Shield, Calendar, Lock } from 'lucide-react';
+import { Database, Users, Shield, Search, Calendar } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import DatabaseManagement from './DatabaseManagement';
 import UserManagement from './UserManagement';
+import DatabaseInvestigation from './DatabaseInvestigation';
 import AdminCyclesManager from './AdminCyclesManager';
-import AccessControls from './AccessControls';
 
+/**
+ * Unified Admin Page with Tabs
+ * Default: Users tab
+ * Tab Order: Users, Database, Cycles, Investigation
+ */
 function AdminPage() {
   const [activeTab, setActiveTab] = useState('users');
 
@@ -16,12 +21,6 @@ function AdminPage() {
       name: 'Users',
       icon: Users,
       component: UserManagement
-    },
-    {
-      id: 'access',
-      name: 'Access Controls',
-      icon: Lock,
-      component: AccessControls
     },
     {
       id: 'database',
@@ -34,6 +33,12 @@ function AdminPage() {
       name: 'Cycles',
       icon: Calendar,
       component: AdminCyclesManager
+    },
+    {
+      id: 'investigation',
+      name: 'Investigation',
+      icon: Search,
+      component: DatabaseInvestigation
     }
   ];
 
@@ -60,14 +65,14 @@ function AdminPage() {
 
         {/* Tab Navigation */}
         <Card className="mb-6 p-0">
-          <div className="flex border-b border-gray-200 overflow-x-auto">
+          <div className="flex border-b border-gray-200">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-6 py-4 font-medium transition-colors border-b-2 whitespace-nowrap ${
+                  className={`flex items-center gap-2 px-6 py-4 font-medium transition-colors border-b-2 ${
                     activeTab === tab.id
                       ? 'border-blue-600 text-blue-600 bg-blue-50'
                       : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'

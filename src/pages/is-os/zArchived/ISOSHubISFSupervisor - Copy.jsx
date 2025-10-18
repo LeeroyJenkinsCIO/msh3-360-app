@@ -1,4 +1,4 @@
-// 📍 SAVE TO: src/pages/is-os/ISOSHubISFSupervisor.jsx
+// 📁 SAVE TO: src/pages/is-os/ISOSHubISFSupervisor.jsx
 // ISF Supervisor Hub - Team supervisor view with direct reports
 
 import React, { useState, useEffect } from 'react';
@@ -22,7 +22,9 @@ function ISOSHubISFSupervisor() {
   const CYCLE_START_DATE = new Date(2025, 9, 1);
   
   // ==================== STATE ====================
+  const [activeTab, setActiveTab] = useState('team'); // 'team' or 'myassessments'
   const [gridMembers, setGridMembers] = useState([]);
+  const [allAssessments, setAllAssessments] = useState([]); // NEW: Store all assessments
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState({
     cycleNumber: 1,
@@ -142,14 +144,56 @@ function ISOSHubISFSupervisor() {
         // Build user maps
         const allUsersMap = {};
         const userIdToAuthUid = {};
+        const usersByAuthUid = {};
         
         allUsersSnapshot.docs.forEach(doc => {
           const userData = doc.data();
           allUsersMap[userData.userId] = userData.displayName || 'Unknown';
           if (userData.userId && doc.id) {
             userIdToAuthUid[userData.userId] = doc.id;
+            usersByAuthUid[doc.id] = userData;
           }
         });
+        
+        // NEW: Process all assessments into standardized format
+        const assessmentsArray = [];
+        allAssessmentsSnapshot.docs.forEach(doc => {
+          const data = doc.data();
+          const employeeData = usersByAuthUid[data.subjectId];
+          const managerData = usersByAuthUid[data.assessorId];
+          
+          assessmentsArray.push({
+            id: doc.id,
+            employeeId: data.subjectId,
+            employeeName: employeeData?.displayName || 'Unknown',
+            employeeEmail: employeeData?.email || '',
+            employeeLayer: employeeData?.layer || 'Unknown',
+            managerId: data.assessorId,
+            managerName: managerData?.displayName || 'Unknown',
+            cycleTitle: `${cycleInfo.currentMonthName} - ${cycleInfo.assessmentType}`,
+            cycleStartDate: new Date(currentYear, currentMonth, 1),
+            cycleEndDate: new Date(currentYear, currentMonth + 1, 0),
+            dueDate: cycleInfo.deadline,
+            status: data.status || 'pending',
+            compositeScore: data.composite || null,
+            hrpRequested: data.hrpRequested || false,
+            hrpReviewedAt: data.hrpReviewedAt || null,
+            isSelfAssessment: data.isSelfAssessment || false,
+            pillar: employeeData?.pillar,
+            pillarId: employeeData?.pillar,
+            subPillar: employeeData?.subPillar,
+            nineBoxPosition: data.nineBoxPosition || null,
+            mshId: data.mshId || doc.id.slice(0, 8),
+            createdAt: data.createdAt?.toDate?.() || null,
+            completedAt: data.completedAt?.toDate?.() || null
+          });
+        });
+        
+        console.log('ISFsupervisor - Total assessments transformed:', assessmentsArray.length);
+        console.log('ISFsupervisor - Current user UID:', user.uid);
+        console.log('ISFsupervisor - Sample assessment:', assessmentsArray[0]);
+        
+        setAllAssessments(assessmentsArray);
         
         // Group assessments by subject
         const assessmentsBySubject = {};
@@ -330,19 +374,24 @@ function ISOSHubISFSupervisor() {
   }, [user.userId]);
 
   // ==================== EVENT HANDLERS ====================
-  const handleStartAssessments = () => {
-    const firstPending = gridMembers.find(m => 
-      m.currentAssessment?.status === 'pending' || !m.currentAssessment
-    );
-    
-    if (firstPending) {
-      if (firstPending.currentAssessment?.id) {
-        navigate(`/is-os/assessments/${metrics.assessmentType}/edit/${firstPending.currentAssessment.id}`);
+  const handleStartAssessments = (member) => {
+    // member can be either team member object or assessment in My Assessments tab
+    if (member.currentAssessment && member.currentAssessment.id) {
+      navigate(`/is-os/assessments/${metrics.assessmentType}/edit/${member.currentAssessment.id}`);
+    } else {
+      const firstPending = gridMembers.find(m => 
+        m.currentAssessment?.status === 'pending' || !m.currentAssessment
+      );
+      
+      if (firstPending) {
+        if (firstPending.currentAssessment?.id) {
+          navigate(`/is-os/assessments/${metrics.assessmentType}/edit/${firstPending.currentAssessment.id}`);
+        } else {
+          navigate(`/is-os/assessments/${metrics.assessmentType}/edit`);
+        }
       } else {
         navigate(`/is-os/assessments/${metrics.assessmentType}/edit`);
       }
-    } else {
-      navigate(`/is-os/assessments/${metrics.assessmentType}/edit`);
     }
   };
 
@@ -557,36 +606,96 @@ function ISOSHubISFSupervisor() {
           </div>
         </div>
 
-        {/* ==================== ASSESSMENT CYCLE GRID ==================== */}
+        {/* ==================== NEW: TABBED ASSESSMENT VIEWS ==================== */}
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">My Team Assessments</h2>
-              <p className="text-gray-600 mt-1">Direct reports • Monthly 1x1 assessments</p>
-            </div>
-            <Button
-              variant="secondary"
-              onClick={() => navigate('/is-os/assessments/history')}
-            >
-              View Assessment History
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
+          {/* Tab Navigation */}
+          <div className="border-b border-gray-200 mb-6">
+            <nav className="flex gap-8">
+              <button
+                onClick={() => setActiveTab('team')}
+                className={`pb-4 px-1 font-medium text-sm border-b-2 transition-colors ${
+                  activeTab === 'team'
+                    ? 'border-yellow-600 text-yellow-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                My Team
+              </button>
+              <button
+                onClick={() => setActiveTab('myassessments')}
+                className={`pb-4 px-1 font-medium text-sm border-b-2 transition-colors ${
+                  activeTab === 'myassessments'
+                    ? 'border-yellow-600 text-yellow-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                My Assessments
+              </button>
+            </nav>
           </div>
 
-          <AssessmentCycleGrid
-            members={gridMembers}
-            assessmentType={metrics.assessmentType}
-            currentMonthName={metrics.currentMonthName}
-            onStartAssessments={handleStartAssessments}
-            onViewAssessment={handleViewAssessment}
-            showStartButton={true}
-            emptyStateMessage="No team members found"
-            showPillarColumn={false}
-            showSubPillarColumn={true}
-            showTeamSizeColumn={false}
-            showAssessorColumn={false}
-            showHRPColumn={true}
-          />
+          {/* Tab Content */}
+          {activeTab === 'team' && (
+            <AssessmentCycleGrid
+              members={gridMembers}
+              assessmentType={metrics.assessmentType}
+              currentMonthName={metrics.currentMonthName}
+              onStartAssessments={handleStartAssessments}
+              onViewAssessment={handleViewAssessment}
+              showStartButton={true}
+              emptyStateMessage="No team members found"
+              showPillarColumn={false}
+              showSubPillarColumn={true}
+              showTeamSizeColumn={false}
+              showAssessorColumn={false}
+              showHRPColumn={true}
+            />
+          )}
+
+          {activeTab === 'myassessments' && (
+            <AssessmentCycleGrid
+              members={(() => {
+                // Transform assessments where current user is the subject
+                const myAssessments = allAssessments.filter(a => a.employeeId === user.uid);
+                console.log('ISFsupervisor - My Assessments filtered:', myAssessments.length, 'User UID:', user.uid);
+                
+                return myAssessments.map(assessment => ({
+                  id: assessment.id,
+                  name: assessment.isSelfAssessment ? 'Self-Assessment' : 'Manager Assessment',
+                  email: user.email || '',
+                  layer: 'ISF',
+                  pillarRole: 'Supervisor',
+                  subPillar: assessment.subPillar || 'N/A',
+                  pillarId: assessment.pillarId,
+                  assessorName: assessment.managerName,
+                  isDirectReport: true,
+                  currentAssessment: {
+                    id: assessment.id,
+                    status: assessment.status,
+                    composite: assessment.compositeScore,
+                    alignmentStatus: assessment.status === 'not-aligned' ? 'not-aligned' : 'aligned',
+                    nineBoxPosition: assessment.nineBoxPosition,
+                    mshId: assessment.mshId,
+                    hrpRequested: assessment.hrpRequested,
+                    hrpReviewedAt: assessment.hrpReviewedAt
+                  },
+                  teamSize: 0,
+                  isSupervisor: true
+                }));
+              })()}
+              assessmentType={metrics.assessmentType}
+              currentMonthName={metrics.currentMonthName}
+              onStartAssessments={handleStartAssessments}
+              onViewAssessment={handleViewAssessment}
+              showStartButton={true}
+              emptyStateMessage="No assessments assigned to you yet"
+              showPillarColumn={false}
+              showSubPillarColumn={false}
+              showTeamSizeColumn={false}
+              showAssessorColumn={true}
+              showHRPColumn={true}
+            />
+          )}
         </div>
 
         {/* ==================== QUICK ACTIONS ==================== */}

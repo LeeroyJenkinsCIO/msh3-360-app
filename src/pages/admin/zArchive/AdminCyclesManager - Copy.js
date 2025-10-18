@@ -39,7 +39,7 @@ function AdminCyclesManager() {
     loadValidation();
   }, []);
 
-  const loadData = async (showModalIfEmpty = false) => {
+  const loadData = async () => {
     try {
       const [allCyclesResult, lastCycleResult, activeCycleResult] = await Promise.all([
         getAllCycles(),
@@ -51,8 +51,8 @@ function AdminCyclesManager() {
       setLastCycle(lastCycleResult);
       setActiveCycle(activeCycleResult);
       
-      // Only show first-time setup modal when explicitly triggered (via refresh)
-      if (!lastCycleResult && showModalIfEmpty) {
+      // Check if this is first-time setup (no cycles exist)
+      if (!lastCycleResult) {
         setShowFirstTimeSetup(true);
       }
     } catch (error) {
@@ -90,6 +90,33 @@ function AdminCyclesManager() {
     }
   };
 
+  const loadCycles = async () => {
+    try {
+      const allCycles = await getAllCycles();
+      setCycles(allCycles);
+    } catch (error) {
+      console.error('Error loading cycles:', error);
+    }
+  };
+
+  const loadLastCycle = async () => {
+    try {
+      const last = await getLastCycle();
+      setLastCycle(last);
+    } catch (error) {
+      console.error('Error loading last cycle:', error);
+    }
+  };
+
+  const loadActiveCycle = async () => {
+    try {
+      const active = await getActiveCycle();
+      setActiveCycle(active);
+    } catch (error) {
+      console.error('Error loading active cycle:', error);
+    }
+  };
+
   const handleCreateCycle = async () => {
     setLoading(true);
     setMessage('');
@@ -111,7 +138,7 @@ function AdminCyclesManager() {
           `Managers: ${result.managersProcessed}`
         );
         
-        setShowFirstTimeSetup(false);
+        setShowFirstTimeSetup(false); // Close modal on success
         await loadData();
         await loadPreview();
         await loadValidation();
@@ -123,12 +150,6 @@ function AdminCyclesManager() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleRefresh = async () => {
-    await loadData(true); // Pass true to trigger modal if no data
-    await loadPreview();
-    await loadValidation();
   };
 
   const getStatusBadge = (status) => {
@@ -245,10 +266,7 @@ function AdminCyclesManager() {
                 {loading ? 'Creating...' : 'Create First Cycle'}
               </Button>
               <Button
-                onClick={() => {
-                  setShowFirstTimeSetup(false);
-                  handleRefresh();
-                }}
+                onClick={() => setShowFirstTimeSetup(false)}
                 disabled={loading}
                 variant="ghost"
               >
@@ -273,7 +291,11 @@ function AdminCyclesManager() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={handleRefresh}
+            onClick={() => {
+              loadData();
+              loadPreview();
+              loadValidation();
+            }}
           >
             <RefreshCw className="w-4 h-4" />
           </Button>
@@ -286,8 +308,8 @@ function AdminCyclesManager() {
             <div>
               <div className="flex items-center gap-3 mb-1">
                 <span className="text-sm text-gray-600">Active Cycle</span>
-                <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getAssessmentTypeBadge(activeCycle.cycleType)}`}>
-                  {activeCycle.cycleType?.toUpperCase() || '1X1'}
+                <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getAssessmentTypeBadge(activeCycle.assessmentType)}`}>
+                  {activeCycle.assessmentType?.toUpperCase() || '1X1'}
                 </span>
                 <span className="text-sm font-semibold text-purple-700">
                   Cycle {activeCycle.cycleNumber} of 4
@@ -306,7 +328,7 @@ function AdminCyclesManager() {
         <Card className="bg-gray-50">
           <div className="text-sm text-gray-600">
             <strong>Last Cycle Created:</strong> {lastCycle.monthName} {lastCycle.year} 
-            {' '}({lastCycle.cycleType?.toUpperCase()})
+            {' '}({lastCycle.assessmentType?.toUpperCase()})
             {' '}- Cycle {lastCycle.cycleNumber} of 4
           </div>
         </Card>
@@ -357,7 +379,7 @@ function AdminCyclesManager() {
                   <span className="font-semibold">{previewCounts.assessments1x1Total}</span>
                 </div>
                 <div className="border-t border-blue-300 pt-2 mt-2 flex justify-between text-blue-700">
-                  <span className="font-bold">Assessments:</span>
+                  <span className="font-bold">MSH Published:</span>
                   <span className="font-bold">{previewCounts.assessments1x1Total}</span>
                 </div>
               </div>
@@ -383,42 +405,18 @@ function AdminCyclesManager() {
                   <span>360 Total:</span>
                   <span>{previewCounts.total360Assessments}</span>
                 </div>
-              </div>
-            </div>
-          </div>
-
-          {/* NEW: MSH³ Published Expected Box */}
-          <div className="bg-white rounded-lg p-4 border-2 border-amber-300 mb-4">
-            <h3 className="text-sm font-bold text-amber-900 mb-3">MSH³ Published (Expected per Cycle)</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-700">1x1 (Months 1 & 2):</span>
-                  <span className="font-semibold">{previewCounts.msh1x1Expected || 48}</span>
-                </div>
-                <div className="text-xs text-gray-500 ml-4">24 per month × 2</div>
-              </div>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-700">360 (Month 3):</span>
-                  <span className="font-semibold">{previewCounts.msh360Expected || 34}</span>
-                </div>
-                <div className="text-xs text-gray-500 ml-4">
-                  • Manager-DR Pairs: 24<br/>
-                  • ISL P2P: 10
+                <div className="border-t border-purple-300 pt-2 flex justify-between text-purple-700">
+                  <span className="font-bold">MSH Published:</span>
+                  <span className="font-bold">53</span>
                 </div>
               </div>
-            </div>
-            <div className="border-t border-amber-300 pt-3 mt-3 flex justify-between items-center">
-              <span className="font-bold text-gray-900">Total Expected per Cycle:</span>
-              <span className="text-2xl font-bold text-amber-700">{previewCounts.mshTotalExpected || 82}</span>
             </div>
           </div>
 
           {/* Grand Total */}
           <div className="bg-gradient-to-r from-green-100 to-emerald-100 rounded-lg p-4 border-2 border-green-300">
             <div className="flex justify-between items-center">
-              <span className="text-lg font-bold text-gray-900">Grand Total Assessments per Cycle:</span>
+              <span className="text-lg font-bold text-gray-900">Grand Total per 3-Month Cycle:</span>
               <span className="text-3xl font-bold text-green-700">{previewCounts.grandTotalPerCycle}</span>
             </div>
           </div>
@@ -436,6 +434,8 @@ function AdminCyclesManager() {
                       <div>
                         <span className="font-medium text-gray-900">{manager.name}</span>
                         <span className="text-gray-500 ml-2">({manager.layer})</span>
+                        {manager.pillar && <span className="text-gray-400 ml-1">- {manager.pillar}</span>}
+                        {manager.subPillar && <span className="text-gray-400 ml-1">- {manager.subPillar}</span>}
                       </div>
                       <span className="font-semibold text-indigo-600">{manager.directReports} direct reports</span>
                     </div>
@@ -456,109 +456,98 @@ function AdminCyclesManager() {
             <span className="text-sm text-gray-600">(Actual counts from database)</span>
           </div>
 
-          {/* Top Row - Main StatCards */}
-          <div className="grid grid-cols-7 gap-3 mb-4">
-            <div className="bg-white rounded-lg p-4 border-2 border-emerald-300 text-center">
-              <div className="text-4xl font-bold text-emerald-700">{validationStats.totalCycles}</div>
-              <div className="text-xs font-semibold text-gray-600 mt-1">Total<br/>Cycles</div>
+          {/* Summary Stats */}
+          <div className="grid grid-cols-4 gap-4 mb-4">
+            {/* Row 1: Main Stats */}
+            <div className="grid grid-cols-4 gap-4">
+              <div className="bg-white rounded-lg p-4 border border-emerald-200">
+                <div className="text-2xl font-bold text-emerald-700">{validationStats.totalCycles}</div>
+                <div className="text-sm text-gray-600">Total Cycles</div>
+              </div>
+              <div className="bg-white rounded-lg p-4 border border-emerald-200">
+                <div className="text-2xl font-bold text-blue-700">{validationStats.totalAssessments}</div>
+                <div className="text-sm text-gray-600">Total Assessments</div>
+              </div>
+              <div className="bg-white rounded-lg p-4 border border-emerald-200">
+                <div className="text-2xl font-bold text-purple-700">{validationStats.assessments1x1}</div>
+                <div className="text-sm text-gray-600">1x1 Assessments</div>
+              </div>
+              <div className="bg-white rounded-lg p-4 border border-emerald-200">
+                <div className="text-2xl font-bold text-indigo-700">{validationStats.assessments360}</div>
+                <div className="text-sm text-gray-600">360 Assessments</div>
+              </div>
             </div>
-            <div className="bg-white rounded-lg p-4 border-2 border-blue-300 text-center">
-              <div className="text-4xl font-bold text-blue-700">{validationStats.totalAssessments}</div>
-              <div className="text-xs font-semibold text-gray-600 mt-1">Total<br/>Assessments</div>
-            </div>
-            <div className="bg-white rounded-lg p-4 border-2 border-indigo-300 text-center">
-              <div className="text-4xl font-bold text-indigo-700">{validationStats.assessments1x1}</div>
-              <div className="text-xs font-semibold text-gray-600 mt-1">1x1<br/>Assessments</div>
-            </div>
-            <div className="bg-white rounded-lg p-4 border-2 border-purple-300 text-center">
-              <div className="text-4xl font-bold text-purple-700">{validationStats.assessments360}</div>
-              <div className="text-xs font-semibold text-gray-600 mt-1">360<br/>Assessments</div>
-            </div>
-            <div className="bg-white rounded-lg p-3 border border-yellow-200 text-center">
-              <div className="text-3xl font-bold text-yellow-700">{validationStats.statusCounts?.pending || 0}</div>
-              <div className="text-xs font-semibold text-gray-600 mt-1">Pending</div>
-            </div>
-            <div className="bg-white rounded-lg p-3 border border-green-200 text-center">
-              <div className="text-3xl font-bold text-green-700">{validationStats.statusCounts?.completed || 0}</div>
-              <div className="text-xs font-semibold text-gray-600 mt-1">Completed</div>
-            </div>
-            <div className="bg-white rounded-lg p-3 border-2 border-amber-300 text-center">
-              <div className="text-3xl font-bold text-amber-700">{validationStats.totalMshPublished || 0}</div>
-              <div className="text-xs font-semibold text-gray-600 mt-1">MSH³<br/>Published</div>
+
+            {/* Row 2: Status Breakdown */}
+            <div className="grid grid-cols-5 gap-3">
+              <div className="bg-white rounded-lg p-3 border border-gray-200">
+                <div className="text-lg font-bold text-yellow-700">{validationStats.statusCounts?.pending || 0}</div>
+                <div className="text-xs text-gray-600">Pending</div>
+              </div>
+              <div className="bg-white rounded-lg p-3 border border-gray-200">
+                <div className="text-lg font-bold text-blue-700">{validationStats.statusCounts?.in_progress || 0}</div>
+                <div className="text-xs text-gray-600">In Progress</div>
+              </div>
+              <div className="bg-white rounded-lg p-3 border border-gray-200">
+                <div className="text-lg font-bold text-green-700">{validationStats.statusCounts?.completed || 0}</div>
+                <div className="text-xs text-gray-600">Completed</div>
+              </div>
+              <div className="bg-white rounded-lg p-3 border border-gray-200">
+                <div className="text-lg font-bold text-purple-700">{validationStats.statusCounts?.calibrated || 0}</div>
+                <div className="text-xs text-gray-600">Calibrated</div>
+              </div>
+              <div className="bg-white rounded-lg p-3 border border-gray-200">
+                <div className="text-lg font-bold text-gray-700">{validationStats.statusCounts?.archived || 0}</div>
+                <div className="text-xs text-gray-600">Archived</div>
+              </div>
             </div>
           </div>
 
           {/* Cycle Breakdown */}
           {validationStats.cycles && validationStats.cycles.length > 0 && (
-            <div className="bg-white rounded-lg p-4 border border-emerald-200 mb-4">
+            <div className="bg-white rounded-lg p-4 border border-emerald-200">
               <h3 className="text-sm font-bold text-emerald-900 mb-3">Cycles in Database</h3>
               <div className="space-y-2">
                 {[...validationStats.cycles].sort((a, b) => {
+                  // Sort earliest to latest (Oct, Nov, Dec)
                   if (a.year !== b.year) return a.year - b.year;
                   return a.month - b.month;
                 }).map((cycle, idx) => {
-                  const expectedAssessments = cycle.cycleType === '1x1' 
+                  const expected = cycle.assessmentType === '1x1' 
                     ? previewCounts?.assessments1x1PerMonth || 24
                     : previewCounts?.total360Assessments || 93;
-                  const isAssessmentMatch = cycle.assessmentCount === expectedAssessments;
-                  
-                  const expectedMsh = cycle.cycleType === '1x1' 
-                    ? 24
-                    : 34;
-                  const isMshMatch = cycle.mshPublishedCount === expectedMsh;
+                  const isMatch = cycle.assessmentCount === expected;
                   
                   return (
-                    <div key={idx} className="border border-gray-200 rounded-lg p-3 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
-                            cycle.cycleType === '1x1' 
-                              ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                              : 'bg-purple-100 text-purple-800 border border-purple-200'
-                          }`}>
-                            {cycle.cycleType?.toUpperCase()}
-                          </span>
-                          <span className="font-medium text-gray-900">{cycle.monthName} {cycle.year}</span>
-                          <span className="text-sm text-purple-700 font-semibold">Cycle {cycle.cycleNumber}/4</span>
-                        </div>
+                    <div key={idx} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                      <div className="flex items-center gap-3">
+                        <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
+                          cycle.assessmentType === '1x1' 
+                            ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                            : 'bg-purple-100 text-purple-800 border border-purple-200'
+                        }`}>
+                          {cycle.assessmentType?.toUpperCase()}
+                        </span>
+                        <span className="font-medium text-gray-900">{cycle.monthName} {cycle.year}</span>
+                        <span className="text-sm text-gray-600">Cycle {cycle.cycleNumber}/4</span>
                       </div>
-                      
-                      {/* Assessments Row */}
-                      <div className="flex items-center justify-between pl-3">
-                        <span className="text-sm text-gray-600">Assessments:</span>
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm text-gray-700">
-                            <span className="font-bold text-lg">{cycle.assessmentCount}</span> created
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm text-gray-700">
+                          <span className="font-bold text-lg">{cycle.assessmentCount}</span> assessments
+                        </span>
+                        {isMatch ? (
+                          <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800 border border-green-300">
+                            ✓ Expected: {expected}
                           </span>
-                          {isAssessmentMatch ? (
-                            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800 border border-green-300">
-                              ✓ Expected: {expectedAssessments}
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-800 border border-red-300">
-                              ⚠ Expected: {expectedAssessments}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      
-                      {/* MSH Published Row */}
-                      <div className="flex items-center justify-between pl-3">
-                        <span className="text-sm text-gray-600">MSH³ Published:</span>
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm text-gray-700">
-                            <span className="font-bold text-lg text-amber-700">{cycle.mshPublishedCount || 0}</span> published
+                        ) : cycle.assessmentType === '360' ? (
+                          <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-orange-100 text-orange-800 border border-orange-300">
+                            🚧 DEV MODE (Expected: {expected})
                           </span>
-                          {isMshMatch ? (
-                            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800 border border-green-300">
-                              ✓ Expected: {expectedMsh}
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300">
-                              ⏳ Expected: {expectedMsh}
-                            </span>
-                          )}
-                        </div>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-800 border border-red-300">
+                            ⚠ Expected: {expected}
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
@@ -568,78 +557,32 @@ function AdminCyclesManager() {
           )}
 
           {/* Validation Summary */}
-          <div className="bg-gradient-to-r from-emerald-100 to-teal-100 rounded-lg p-4 border-2 border-emerald-300">
-            {validationStats.totalCycles === 0 ? (
-              <div className="text-center py-4">
-                <div className="text-lg font-bold text-gray-900 mb-2">📋 No cycles in database yet</div>
-                <div className="text-sm text-gray-600">Create your first cycle to see validation data</div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {/* Assessment Validation */}
-                <div className="flex items-center justify-between">
+          <div className="mt-4 bg-gradient-to-r from-emerald-100 to-teal-100 rounded-lg p-4 border-2 border-emerald-300">
+            <div className="flex items-center justify-between">
+              <div>
+                {validationStats.totalCycles === 0 ? (
+                  <span className="text-sm font-bold text-gray-900">📋 No cycles in database yet</span>
+                ) : (
                   <div className="space-y-1">
                     <div className="text-sm font-bold text-gray-900">
                       ✅ 1x1 assessments: Working correctly ({validationStats.assessments1x1} total)
                     </div>
                     <div className="text-sm font-bold text-gray-900">
-                      ✅ 360 assessments: Complete ({validationStats.assessments360} total)
-                    </div>
-                  </div>
-                  {previewCounts && (
-                    <div className="text-right">
-                      <div className="text-xs text-gray-600 mb-1">Expected per full cycle:</div>
-                      <div className="text-2xl font-bold text-emerald-700">{previewCounts.grandTotalPerCycle}</div>
-                    </div>
-                  )}
-                </div>
-                
-                {/* MSH³ Published Validation */}
-                {previewCounts && (
-                  <div className="border-t border-emerald-300 pt-3 mt-3">
-                    <div className="text-sm font-bold text-gray-900 mb-3">MSH³ Published Validation:</div>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="bg-white rounded-lg p-3 border border-blue-200">
-                        <div className="text-xs text-gray-600 mb-1">1x1 Expected:</div>
-                        <div className="text-2xl font-bold text-blue-700">48</div>
-                        <div className="text-xs text-gray-500 mt-1">24 per month × 2</div>
-                      </div>
-                      <div className="bg-white rounded-lg p-3 border border-purple-200">
-                        <div className="text-xs text-gray-600 mb-1">360 Expected:</div>
-                        <div className="text-2xl font-bold text-purple-700">34</div>
-                        <div className="text-xs text-gray-500 mt-1">24 MR-DR + 10 P2P</div>
-                      </div>
-                      <div className="bg-white rounded-lg p-3 border-2 border-amber-300">
-                        <div className="text-xs text-gray-600 mb-1">Total Expected:</div>
-                        <div className="text-2xl font-bold text-amber-700">82</div>
-                        <div className="text-xs text-gray-500 mt-1">per cycle</div>
-                      </div>
-                    </div>
-                    
-                    {/* Expected vs Actual Comparison */}
-                    <div className="mt-3 bg-white rounded-lg p-3 border-2 border-amber-200">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-bold text-gray-900">Actual MSH³ Published:</span>
-                        <span className="text-2xl font-bold text-amber-700">{validationStats.totalMshPublished || 0}</span>
-                      </div>
-                      {validationStats.totalMshPublished !== undefined && (
-                        <div className="mt-2 text-xs">
-                          {validationStats.totalMshPublished === (previewCounts.mshTotalExpected || 82) * validationStats.totalCycles ? (
-                            <span className="text-green-700 font-semibold">✅ All expected MSH³ scores published!</span>
-                          ) : validationStats.totalMshPublished < (previewCounts.mshTotalExpected || 82) * validationStats.totalCycles ? (
-                            <span className="text-amber-700 font-semibold">
-                              ⏳ {((previewCounts.mshTotalExpected || 82) * validationStats.totalCycles) - validationStats.totalMshPublished} scores pending publication
-                            </span>
-                          ) : (
-                            <span className="text-blue-700 font-semibold">ℹ️ Review MSH³ count</span>
-                          )}
-                        </div>
+                      {validationStats.assessments360 === 93 ? (
+                        <span className="text-green-700">✅ 360 assessments: Complete ({validationStats.assessments360} total)</span>
+                      ) : (
+                        <span className="text-orange-700">🚧 360 assessments: In Development ({validationStats.assessments360}/93 created)</span>
                       )}
                     </div>
                   </div>
                 )}
               </div>
-            )}
+              {previewCounts && validationStats.totalCycles > 0 && (
+                <span className="text-sm text-gray-700">
+                  Expected per full cycle: <span className="font-bold">{previewCounts.grandTotalPerCycle}</span>
+                </span>
+              )}
+            </div>
           </div>
         </Card>
       )}
@@ -734,8 +677,8 @@ function AdminCyclesManager() {
                       <div className="text-xs text-gray-500">{cycle.cycleId}</div>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getAssessmentTypeBadge(cycle.cycleType)}`}>
-                        {cycle.cycleType?.toUpperCase() || '1X1'}
+                      <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getAssessmentTypeBadge(cycle.assessmentType)}`}>
+                        {cycle.assessmentType?.toUpperCase() || '1X1'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">

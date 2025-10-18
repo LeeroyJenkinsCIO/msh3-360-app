@@ -1,6 +1,3 @@
-// 📁 SAVE TO: src/components/MainLayout.js
-// Main application layout with navigation and authentication
-
 import React from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
@@ -43,49 +40,42 @@ function MainLayout() {
       path: '/wiki',
       showForAll: true,
       hideForAdmin: true,
-      showForHRP: true
+      showForHRP: true  // ✅ HRP can see Wiki
     },
     {
       name: 'Quick Align',
       path: '/quick-align',
       showForAll: true,
       hideForAdmin: true,
-      showForHRP: false
+      showForHRP: false  // ❌ HRP cannot see Quick Align
     },
     {
       name: 'ISOS Hub',
       path: '/is-os',
       showForAll: true,
       hideForAdmin: true,
-      showForHRP: true
-    },
-    {
-      name: 'ISOS Org',
-      path: '/isos-org',
-      showForAll: true,
-      hideForAdmin: true,
-      showForHRP: true
+      showForHRP: true  // ✅ HRP can see ISOS Hub (HRP Hub)
     },
     {
       name: 'Projects',
       path: '/projects',
       showForAll: true,
       hideForAdmin: true,
-      showForHRP: false
+      showForHRP: false  // ❌ HRP cannot see Projects
     },
     {
       name: 'Assessment History',
       path: '/is-os/assessments/history',
       showForAll: true,
       hideForAdmin: true,
-      showForHRP: false
+      showForHRP: false  // ❌ HRP cannot see Assessment History
     },
     {
       name: 'Admin',
       path: '/admin',
       showForAll: false,
       requireAdmin: true,
-      showForHRP: false
+      showForHRP: false  // ❌ HRP cannot see Admin
     }
   ];
 
@@ -116,12 +106,12 @@ function MainLayout() {
   // ================================================================
   // 🔴 ADMIN      → Red       (variant: 'danger')
   // ⚪ ISE        → Gray      (variant: 'secondary')
-  // 🟣 ISL        → Purple    (variant: 'purple')
+  // 🔵 ISL        → Blue      (variant: 'primary')
   // 🟡 SUPERVISOR → Yellow    (variant: 'warning')
   // 🟢 ISF        → Green     (variant: 'success')
-  // 🟠 HRP        → Orange    (variant: 'info')
+  // 🟣 HRP        → Purple    (variant: 'info')
   // ================================================================
-  // PRIORITY: Supervisor flag > Admin flag > HRP > Layer
+  // PRIORITY: Supervisor flag > Admin flag > Layer
   const getBadgeVariant = (userRole) => {
     // Check supervisor flag first (overrides layer)
     if (user?.flags?.isSupervisor) {
@@ -135,7 +125,7 @@ function MainLayout() {
     
     // Check HRP
     if (userRole?.toLowerCase() === 'hrp' || user?.flags?.isHRP) {
-      return 'info';     // 🟠 Orange
+      return 'info';     // 🟣 Purple
     }
     
     // Then check layer
@@ -143,7 +133,7 @@ function MainLayout() {
       case 'ise':
         return 'secondary';   // ⚪ Gray
       case 'isl':
-        return 'purple';      // 🟣 Purple
+        return 'primary';     // 🔵 Blue
       case 'isf':
         return 'success';     // 🟢 Green
       default:

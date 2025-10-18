@@ -1,15 +1,13 @@
 // src/pages/admin/UserManagement.jsx
 import React, { useState, useEffect } from 'react';
-import { Users, RefreshCw, Search, Shield, User, UserCheck, Edit2, Users as UsersIcon, UserPlus, AlertTriangle } from 'lucide-react';
+import { Users, RefreshCw, Search, Shield, User, UserCheck, Edit2, Users as UsersIcon, UserPlus } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
-import Badge from '../../components/ui/Badge';
 import EditUserModal from './EditUserModal';
 import CreateUserModal from './CreateUserModal';
 import { useToast } from '../../components/ui/Toast';
 import { getAllUsers, createUser, updateUser, getAssessmentCounts, getDirectReportCounts } from '../../utils/firebaseUsers';
 import { getAllPillars, formatPillarName, getPillarColor } from '../../utils/firebaseConfig';
-import { getSubPillarDisplayName, getPillarAbbreviation } from '../../utils/pillarHelpers';
 
 function UserManagement() {
   const [users, setUsers] = useState([]);
@@ -44,7 +42,7 @@ function UserManagement() {
     filterUsers();
   }, [searchTerm, layerFilter, pillarFilter, users]);
 
-  // Derive sub-pillar membership from pillars collection
+  // NEW: Derive sub-pillar membership from pillars collection
   const deriveUserSubPillars = (users, pillars) => {
     const userSubPillarMap = {};
     
@@ -132,11 +130,11 @@ function UserManagement() {
     }
     
     if (layer === 'HRP' || flags.isHRP) {
-      return { name: 'HRP Hub', icon: '🟠', color: 'text-orange-700', bgColor: 'bg-orange-50' };
+      return { name: 'HRP Hub', icon: '🟣', color: 'text-purple-700', bgColor: 'bg-purple-50' };
     }
     
     if (layer === 'ISE' || flags.isExecutive) {
-      return { name: 'ISE Hub', icon: '⚪', color: 'text-gray-700', bgColor: 'bg-gray-50' };
+      return { name: 'ISE Hub', icon: '🔵', color: 'text-blue-700', bgColor: 'bg-blue-50' };
     }
     
     if (layer === 'ISL' || flags.isPillarLeader) {
@@ -250,9 +248,9 @@ function UserManagement() {
   const getLayerBadgeColor = (layer) => {
     switch (layer) {
       case 'ISE':
-        return 'bg-gray-100 text-gray-800 border border-gray-200';
+        return 'bg-blue-100 text-blue-800 border border-blue-200';
       case 'ISL':
-        return 'bg-indigo-100 text-indigo-800 border border-indigo-200';
+        return 'bg-purple-100 text-purple-800 border border-purple-200';
       case 'ISF':
         return 'bg-green-100 text-green-800 border border-green-200';
       case 'HRP':
@@ -264,31 +262,31 @@ function UserManagement() {
     }
   };
 
-  // ✅ ALIGNED: Display pillar using same logic as UnifiedAssessmentGrid
-  const getPillarDisplay = (user) => {
-    // For ISE, ADMIN, HRP - always show "—" (they don't belong to pillars)
-    if (['ISE', 'ADMIN', 'HRP'].includes(user.layer)) {
-      return '—';
-    }
-    
-    // If no pillar assigned
-    if (!user.pillar) {
-      return '—';
-    }
-    
-    // Return 4-character pillar abbreviation (same as UnifiedAssessmentGrid)
-    return getPillarAbbreviation(user.pillar);
+  const getPillarTextColor = (pillarId) => {
+    const color = getPillarColor(pillarId, pillars);
+    return 'text-gray-900';
   };
 
-  // ✅ ALIGNED: Display sub-pillar using same helper as UnifiedAssessmentGrid
-  const getSubPillarDisplay = (user) => {
-    // For ISE, ADMIN, HRP - always show "—"
-    if (['ISE', 'ADMIN', 'HRP'].includes(user.layer)) {
-      return '—';
+  const getPillarDisplayName = (pillarId) => {
+    if (!pillarId) return '—';
+    
+    const legacyPillarNames = {
+      'admin': 'System Admin',
+      'executive': 'Executive Leadership',
+      'hrp': 'HR Partner'
+    };
+    
+    if (legacyPillarNames[pillarId]) {
+      return `⚠️ ${legacyPillarNames[pillarId]}`;
     }
     
-    const subPillar = user.derivedSubPillar || user.subPillar;
-    return subPillar ? getSubPillarDisplayName(subPillar) : '—';
+    const pillarName = formatPillarName(pillarId, pillars);
+    
+    if (pillarName && pillarName !== pillarId) {
+      return pillarName;
+    }
+    
+    return `⚠️ ${pillarId}`;
   };
 
   const getPillarsManaged = (userId) => {
@@ -369,153 +367,24 @@ function UserManagement() {
         </div>
       </Card>
 
-      {/* Data Validation Summary - Collapsible */}
-      <Card className="bg-yellow-50 border border-yellow-200">
-        <details className="cursor-pointer">
-          <summary className="flex items-center gap-3 font-semibold text-yellow-900">
-            <AlertTriangle className="w-5 h-5" />
-            Data Validation ({(() => {
-              const issues = [];
-              
-              // Check for users without layer
-              const noLayer = users.filter(u => !u.layer).length;
-              if (noLayer > 0) issues.push(`${noLayer} users without role`);
-              
-              // Check for users without email
-              const noEmail = users.filter(u => !u.email).length;
-              if (noEmail > 0) issues.push(`${noEmail} users without email`);
-              
-              // Check for users without name
-              const noName = users.filter(u => !u.displayName).length;
-              if (noName > 0) issues.push(`${noName} users without name`);
-              
-              return issues.length > 0 ? `${issues.length} issue${issues.length > 1 ? 's' : ''} found` : 'All data valid';
-            })()})
-          </summary>
-          
-          <div className="mt-4 space-y-3 text-sm">
-            {/* Detailed validation results */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <div className="font-medium text-gray-700 mb-2">Role Distribution</div>
-                <div className="space-y-1 text-xs">
-                  <div className="flex justify-between">
-                    <span>ISE:</span>
-                    <span className="font-semibold">{iseUsers}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>ISL:</span>
-                    <span className="font-semibold">{islUsers}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>ISF:</span>
-                    <span className="font-semibold">{isfUsers}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>HRP:</span>
-                    <span className="font-semibold">{hrpUsers}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Admin:</span>
-                    <span className="font-semibold">{adminUsers}</span>
-                  </div>
-                  <div className="flex justify-between text-red-600">
-                    <span>No Role:</span>
-                    <span className="font-semibold">{users.filter(u => !u.layer).length}</span>
-                  </div>
-                </div>
-              </div>
-              
-              <div>
-                <div className="font-medium text-gray-700 mb-2">Data Completeness</div>
-                <div className="space-y-1 text-xs">
-                  <div className="flex justify-between">
-                    <span>With Email:</span>
-                    <span className="font-semibold">{users.filter(u => u.email).length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>With Display Name:</span>
-                    <span className="font-semibold">{users.filter(u => u.displayName).length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>With Pillar:</span>
-                    <span className="font-semibold">{users.filter(u => u.pillar).length}</span>
-                  </div>
-                  <div className="flex justify-between text-red-600">
-                    <span>Missing Email:</span>
-                    <span className="font-semibold">{users.filter(u => !u.email).length}</span>
-                  </div>
-                  <div className="flex justify-between text-red-600">
-                    <span>Missing Name:</span>
-                    <span className="font-semibold">{users.filter(u => !u.displayName).length}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <div className="font-medium text-gray-700 mb-2">Special Permissions</div>
-                <div className="space-y-1 text-xs">
-                  <div className="flex justify-between">
-                    <span>ISF Supervisors:</span>
-                    <span className="font-semibold">{isfSupervisors}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>With Direct Reports:</span>
-                    <span className="font-semibold">{users.filter(u => (u.directReportIds && u.directReportIds.length > 0)).length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Pillar Leaders (ISE):</span>
-                    <span className="font-semibold">{users.filter(u => u.layer === 'ISE' && getPillarsManaged(u.id).length > 0).length}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <div className="font-medium text-gray-700 mb-2">Assessment Activity (Published MSH)</div>
-                <div className="space-y-1 text-xs">
-                  <div className="flex justify-between">
-                    <span>Given Assessments:</span>
-                    <span className="font-semibold">{users.filter(u => getAssessmentCount(u.id, 'assessor') > 0).length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Received Assessments:</span>
-                    <span className="font-semibold">{users.filter(u => getAssessmentCount(u.id, 'assessed') > 0).length}</span>
-                  </div>
-                  <div className="flex justify-between text-yellow-600">
-                    <span>No Activity:</span>
-                    <span className="font-semibold">{users.filter(u => getAssessmentCount(u.id, 'assessor') === 0 && getAssessmentCount(u.id, 'assessed') === 0).length}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div className="pt-3 mt-3 border-t border-yellow-300">
-              <div className="text-xs text-yellow-800">
-                <strong>Note:</strong> This validates Firestore user data only. For Firebase Authentication validation, see the <strong>Access Controls</strong> tab.
-              </div>
-            </div>
-          </div>
-        </details>
-      </Card>
-
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="bg-white">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-3xl font-bold text-gray-600">{iseUsers}</div>
+              <div className="text-3xl font-bold text-blue-600">{iseUsers}</div>
               <div className="text-sm text-gray-600">ISE Users</div>
             </div>
-            <User className="w-10 h-10 text-gray-500" />
+            <User className="w-10 h-10 text-blue-500" />
           </div>
         </Card>
 
         <Card className="bg-white">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-3xl font-bold text-indigo-600">{islUsers}</div>
+              <div className="text-3xl font-bold text-purple-600">{islUsers}</div>
               <div className="text-sm text-gray-600">ISL Users</div>
             </div>
-            <User className="w-10 h-10 text-indigo-500" />
+            <User className="w-10 h-10 text-purple-500" />
           </div>
         </Card>
 
@@ -641,17 +510,16 @@ function UserManagement() {
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase whitespace-nowrap">Name</th>
                   <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase whitespace-nowrap">Role</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase whitespace-nowrap">Hub View</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase whitespace-nowrap">Pillar</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase whitespace-nowrap">Pillar</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase whitespace-nowrap">Sub-Pillar</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase whitespace-nowrap">Job Title</th>
                   <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase whitespace-nowrap">
                     <div className="flex items-center justify-center gap-1">
                       <UsersIcon className="w-3 h-3" />
-                      <span>Reports</span>
                     </div>
                   </th>
-                  <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase whitespace-nowrap">MSH Given</th>
-                  <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase whitespace-nowrap">MSH Rec'd</th>
+                  <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase whitespace-nowrap">Given</th>
+                  <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase whitespace-nowrap">Rec'd</th>
                   <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 uppercase whitespace-nowrap bg-blue-50 sticky right-0">Actions</th>
                 </tr>
               </thead>
@@ -662,8 +530,6 @@ function UserManagement() {
                   const assessmentsReceived = getAssessmentCount(user.id, 'assessed');
                   const pillarsManaged = getPillarsManaged(user.id);
                   const hubView = getHubView(user);
-                  const pillarDisplay = getPillarDisplay(user);
-                  const subPillarDisplay = getSubPillarDisplay(user);
                   
                   return (
                     <tr key={user.id} className="hover:bg-gray-50">
@@ -689,27 +555,25 @@ function UserManagement() {
                         </div>
                       </td>
                       
-                      <td className="px-4 py-4 whitespace-nowrap text-center">
-                        {pillarDisplay === '—' ? (
-                          <span className="text-gray-400 text-sm">—</span>
-                        ) : (
-                          <Badge className="bg-indigo-100 text-indigo-800 border border-indigo-300 text-xs font-bold">
-                            {pillarDisplay}
-                          </Badge>
-                        )}
-                        {user.layer === 'ISE' && pillarsManaged.length > 0 && (
-                          <div className="text-xs text-indigo-600 mt-1 flex items-center justify-center gap-1">
-                            <Shield className="w-3 h-3" />
-                            <span className="truncate">
-                              Leads: {pillarsManaged.map(p => p.pillarName).join(', ')}
-                            </span>
-                          </div>
-                        )}
+                      <td className="px-3 py-3">
+                        <div>
+                          <span className={`text-sm font-medium ${getPillarTextColor(user.pillar)}`}>
+                            {getPillarDisplayName(user.pillar)}
+                          </span>
+                          {user.layer === 'ISE' && pillarsManaged.length > 0 && (
+                            <div className="text-xs text-indigo-600 mt-1 flex items-center gap-1">
+                              <Shield className="w-3 h-3" />
+                              <span className="truncate">
+                                Leads: {pillarsManaged.map(p => p.pillarName).join(', ')}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </td>
                       
                       <td className="px-3 py-3">
                         <span className="text-sm text-gray-600">
-                          {subPillarDisplay}
+                          {user.derivedSubPillar || user.subPillar || '—'}
                         </span>
                       </td>
                       
@@ -722,6 +586,7 @@ function UserManagement() {
                       <td className="px-2 py-3 text-center">
                         {directReports > 0 ? (
                           <div className="flex items-center justify-center gap-1">
+                            <UsersIcon className="w-4 h-4 text-indigo-600" />
                             <span className="text-sm font-semibold text-indigo-600">{directReports}</span>
                           </div>
                         ) : (
@@ -771,11 +636,11 @@ function UserManagement() {
                 <span>Admin Panel</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-base">🟠</span>
+                <span className="text-base">🟣</span>
                 <span>HRP Hub</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-base">⚪</span>
+                <span className="text-base">🔵</span>
                 <span>ISE Hub</span>
               </div>
               <div className="flex items-center gap-2">
@@ -791,6 +656,51 @@ function UserManagement() {
                 <span>ISF Hub</span>
               </div>
             </div>
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Admin Tools</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <button
+            onClick={() => window.location.href = '/admin/cleanup'}
+            className="flex items-start gap-4 p-4 border border-orange-200 bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors text-left"
+          >
+            <div className="w-12 h-12 bg-orange-500 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <div className="font-semibold text-gray-900 mb-1">Sub-Pillar Data Cleanup</div>
+              <div className="text-sm text-gray-600">
+                Identify and fix users with legacy or invalid sub-pillar values
+              </div>
+            </div>
+          </button>
+
+          <div className="flex items-start gap-4 p-4 border border-gray-200 bg-gray-50 rounded-lg opacity-50">
+            <div className="w-12 h-12 bg-gray-400 rounded-lg flex items-center justify-center flex-shrink-0">
+              <Users className="w-6 h-6 text-white" />
+            </div>
+            <div className="flex-1">
+              <div className="font-semibold text-gray-900 mb-1">Direct Report Manager</div>
+              <div className="text-sm text-gray-600">
+                Coming Soon: Assign and manage direct report relationships
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="bg-blue-50 border border-blue-200">
+        <div className="flex items-start gap-3">
+          <Users className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-blue-900">
+            <strong className="font-semibold">Coming Soon:</strong> Bulk import and advanced 
+            user management features will be added in future updates.
           </div>
         </div>
       </Card>
