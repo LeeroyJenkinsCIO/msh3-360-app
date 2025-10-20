@@ -23,14 +23,9 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // 🔒 SECURITY: Set persistence based on environment
-      // Production: Session-only (clears on browser close)
-      // Development: Local storage (persists for convenience)
-      const persistenceType = process.env.NODE_ENV === 'production' 
-        ? browserSessionPersistence 
-        : browserLocalPersistence;
-      
-      await setPersistence(auth, persistenceType);
+      // 🔒 SECURITY: ALWAYS use session-only persistence
+      // Session clears when browser closes (both dev and prod)
+      await setPersistence(auth, browserSessionPersistence);
       
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
@@ -82,8 +77,8 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // Dev mode uses local persistence
-      await setPersistence(auth, browserLocalPersistence);
+      // 🔒 SECURITY: Session-only persistence for admin too
+      await setPersistence(auth, browserSessionPersistence);
       
       const userCredential = await signInWithEmailAndPassword(auth, 'admin@sierranevada.com', 'password');
       const user = userCredential.user;
