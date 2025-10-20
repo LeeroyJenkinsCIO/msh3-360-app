@@ -1,5 +1,6 @@
 // 📁 SAVE TO: src/App.js
-// App.js - Complete with Security Hardening
+// App.js - Complete with MSH Detail Route
+
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -26,6 +27,7 @@ import ISOSHubISFSupervisor from './pages/is-os/ISOSHubISFSupervisor';
 import AssessmentHistory from './pages/is-os/AssessmentHistory';
 import OneOnOneAssessGrid from './pages/is-os/1x1AssessGrid';
 import AssessmentDetailView from './pages/is-os/AssessmentDetailView';
+import MSHDetailView from './pages/is-os/MSHDetailView';
 import HRPAssessmentReview from './pages/is-os/HRPAssessmentReview';
 import SelfAssessmentPage from './pages/is-os/SelfAssessmentPage';
 import ComparisonView360 from './pages/is-os/360ComparisonView';
@@ -137,6 +139,9 @@ function App() {
             
             {/* 360° Comparison View Route */}
             <Route path="is-os/360-comparative/:pairId" element={<ComparisonView360 />} />
+            
+            {/* ✅ NEW: MSH Detail View Route */}
+            <Route path="is-os/msh/:id" element={<MSHDetailView />} />
             
             {/* HRP Assessment Review Route */}
             <Route path="is-os/hrp-assessment-review/:assessmentId" element={<HRPAssessmentReview />} />
