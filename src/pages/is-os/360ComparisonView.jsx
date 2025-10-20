@@ -1,6 +1,7 @@
 // 📁 SAVE TO: src/pages/is-os/360ComparisonView.jsx
 // ✅ CRITICAL FIX: Load self-assessments separately since they may not have pairId
 // ✅ P2P: Subject publishes own MSH | MR/DR: Manager publishes both MSHs
+// 🛡️ PRODUCTION: Enhanced MSH counter with safety logging
 
 import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
@@ -427,14 +428,20 @@ function ComparisonView360() {
     }
   };
 
+  // 🛡️ Get next sequential MSH ID with enhanced safety logging
   const getNextMshId = async () => {
     try {
+      console.log('🎫 Generating MSH ID for 360° assessment...');
       const counterRef = doc(db, 'counters', 'msh');
       const counterSnap = await getDoc(counterRef);
       
       let nextNumber = 1;
       if (counterSnap.exists()) {
-        nextNumber = (counterSnap.data().current || 0) + 1;
+        const currentCount = counterSnap.data().current || 0;
+        nextNumber = currentCount + 1;
+        console.log('📈 360° MSH counter:', currentCount, '→', nextNumber);
+      } else {
+        console.log('🆕 Creating new MSH counter');
       }
       
       await setDoc(counterRef, { 
@@ -442,10 +449,12 @@ function ComparisonView360() {
         lastUpdated: serverTimestamp()
       }, { merge: true });
       
-      return `MSH-${String(nextNumber).padStart(3, '0')}`;
+      const mshId = `MSH-${String(nextNumber).padStart(3, '0')}`;
+      console.log('✅ Generated 360° MSH ID:', mshId);
+      return mshId;
     } catch (error) {
-      console.error('Error generating MSH ID:', error);
-      throw new Error('Failed to generate MSH ID');
+      console.error('❌ MSH ID generation failed:', error.message);
+      throw new Error('Failed to generate MSH ID: ' + error.message);
     }
   };
 
@@ -456,12 +465,12 @@ function ComparisonView360() {
       const composite = calculateComposite(alignedScores);
       const nineBoxPosition = calculateNineBoxPosition(alignedScores);
       
+      console.log('📊 Publishing 360° MSH with alignment:', alignmentStatus);
+      
       const mshId = await getNextMshId();
       
       const subjectUid = bilateralAssessment.receiver?.uid || bilateralAssessment.subjectId;
       const subjectName = subjectInfo?.displayName || bilateralAssessment.subjectName;
-      
-      console.log('📊 Publishing 360° MSH with alignment:', alignmentStatus);
       
       // Create MSH record
       await addDoc(collection(db, 'mshScores'), {
@@ -495,6 +504,8 @@ function ComparisonView360() {
         hrpReviewRequested: hrpRequested
       });
       
+      console.log('✅ 360° MSH created:', mshId);
+      
       // Lock bilateral assessment
       await updateDoc(doc(db, 'assessments', bilateralAssessment.id), {
         locked: true,
@@ -521,7 +532,7 @@ function ComparisonView360() {
       navigate('/is-os');
       
     } catch (error) {
-      console.error('Error publishing MSH:', error);
+      console.error('❌ Error publishing 360° MSH:', error.message);
       alert('Failed to publish MSH: ' + error.message);
     } finally {
       setPublishing(false);

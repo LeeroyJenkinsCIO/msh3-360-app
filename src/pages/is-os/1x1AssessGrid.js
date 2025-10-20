@@ -1,6 +1,6 @@
 // 📁 SAVE TO: src/pages/is-os/1x1AssessGrid.js
 // ✅ FIXED: Block 360 assessments from creating MSH (only 360ComparisonView should create 360 MSH)
-// 🔍 DEBUG: Added logging to diagnose MSH creation issue in production
+// 🛡️ PRODUCTION: Minimal safety logging for MSH counter
 
 import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
@@ -232,7 +232,6 @@ export default function OneOnOneAssessGrid() {
       const isSelfAssessment = selectedAssessment.assessmentType === 'self' 
         || selectedAssessment.isSelfAssessment;
       
-      // ✅ NEW: Check if this is a 360 assessment
       const is360Assessment = selectedAssessment.cycleType === '360';
 
       const updateData = {
@@ -248,48 +247,35 @@ export default function OneOnOneAssessGrid() {
         updatedAt: serverTimestamp()
       };
 
-      console.log('📝 Updating assessment with data:', updateData);
-
       await updateDoc(assessmentRef, updateData);
       
-      console.log('✅ Assessment updated in Firestore with alignmentStatus:', alignmentStatus);
-      
-      // 🔍 DEBUG: Check all conditions before MSH creation
-      console.log('🔍 MSH Publish Check:', {
-        isSelfAssessment,
-        is360Assessment,
-        hasImpact: !!selectedAssessment.impact,
-        affectsMSH: selectedAssessment.impact?.affectsMSH,
-        receiverUid: selectedAssessment.receiver?.uid,
-        subjectId: selectedAssessment.subjectId,
-        willPublish: !isSelfAssessment && !is360Assessment && selectedAssessment.impact?.affectsMSH
-      });
-      
-      // ✅ CRITICAL FIX: Only create MSH for 1x1 assessments, NOT for 360 assessments
+      // 🛡️ Safety check before MSH creation
       if (!isSelfAssessment && !is360Assessment && selectedAssessment.impact?.affectsMSH) {
         console.log('📊 Publishing MSH for 1x1 Manager→DR assessment...');
-        const mshId = await publishMshScore(selectedAssessment, composite, nineBoxPosition, alignmentStatus);
         
-        console.log('✅ MSH created:', mshId, 'with alignment:', alignmentStatus);
-        
-        // Update assessment with MSH ID in the correct path
-        await updateDoc(assessmentRef, {
-          'impact.mshId': mshId
-        });
-        
-        alert(`Assessment published successfully! MSH ID: ${mshId}\nAlignment: ${alignmentStatus}\n\nReturning to hub.`);
+        try {
+          const mshId = await publishMshScore(selectedAssessment, composite, nineBoxPosition, alignmentStatus);
+          
+          if (mshId) {
+            await updateDoc(assessmentRef, {
+              'impact.mshId': mshId
+            });
+            
+            alert(`Assessment published successfully! MSH ID: ${mshId}\nAlignment: ${alignmentStatus}\n\nReturning to hub.`);
+          } else {
+            console.error('⚠️ MSH creation returned no ID');
+            alert(`Assessment published!\nAlignment: ${alignmentStatus}\n\n⚠️ MSH creation issue - contact admin.\n\nReturning to hub.`);
+          }
+        } catch (mshError) {
+          console.error('❌ MSH creation failed:', mshError.message);
+          alert(`Assessment published!\nAlignment: ${alignmentStatus}\n\n⚠️ MSH creation failed - contact admin.\n\nReturning to hub.`);
+        }
       } else if (isSelfAssessment) {
-        console.log('🚫 Self-assessment: MSH NOT published (used for 360 calculations only)');
         alert('Self-assessment completed successfully!\n\nReturning to hub.');
       } else if (is360Assessment) {
-        console.log('🚫 360° assessment: MSH NOT published here (will be published from 360ComparisonView)');
         alert(`360° assessment completed successfully!\nAlignment: ${alignmentStatus}\n\nMSH will be published after alignment review.\n\nReturning to hub.`);
       } else {
-        console.warn('⚠️ MSH NOT created. Reasons:');
-        if (!selectedAssessment.impact?.affectsMSH) {
-          console.warn('  - Missing impact.affectsMSH field');
-        }
-        alert(`Assessment published successfully!\nAlignment: ${alignmentStatus}\n\nNote: MSH not created - check console for details.\n\nReturning to hub.`);
+        alert(`Assessment published successfully!\nAlignment: ${alignmentStatus}\n\nReturning to hub.`);
       }
       
       navigate('/is-os');
@@ -301,7 +287,7 @@ export default function OneOnOneAssessGrid() {
     }
   };
 
-  // ✨ NEW: Get next sequential MSH ID from counter
+  // 🛡️ Get next sequential MSH ID with safety logging
   const getNextMshId = async () => {
     try {
       const counterRef = doc(db, 'counters', 'msh');
@@ -312,36 +298,29 @@ export default function OneOnOneAssessGrid() {
         nextNumber = (counterSnap.data().current || 0) + 1;
       }
       
-      // Update counter atomically
       await setDoc(counterRef, { 
         current: nextNumber,
         lastUpdated: serverTimestamp()
       }, { merge: true });
       
-      // Return formatted ID: MSH-001, MSH-002, etc.
       const mshId = `MSH-${String(nextNumber).padStart(3, '0')}`;
-      console.log('✅ Generated sequential MSH ID:', mshId);
+      console.log('✅ Generated MSH ID:', mshId);
       return mshId;
     } catch (error) {
-      console.error('Error generating MSH ID:', error);
-      throw new Error('Failed to generate MSH ID');
+      console.error('❌ MSH ID generation failed:', error.message);
+      throw new Error('Failed to generate MSH ID: ' + error.message);
     }
   };
 
-  // 📊 Publish MSH Score (only for 1x1 non-self assessments)
   const publishMshScore = async (assessment, composite, nineBoxPosition, alignmentStatus) => {
     try {
-      console.log('📝 publishMshScore called with alignmentStatus:', alignmentStatus);
-      
       const affectsMSH = assessment?.impact?.affectsMSH;
       const cycleId = assessment?.cycleId;
       
       if (!affectsMSH || !cycleId) {
-        console.warn('⚠️ Missing required data for MSH publishing:', { affectsMSH, cycleId });
         throw new Error('Missing required data for MSH publishing');
       }
       
-      // ✨ Use sequential MSH ID from counter
       const mshId = await getNextMshId();
       
       // Check if MSH already exists for this cycle/subject combo
@@ -353,8 +332,7 @@ export default function OneOnOneAssessGrid() {
       const existingMsh = await getDocs(mshQuery);
 
       if (!existingMsh.empty) {
-        console.log(`⚠️ MSH already exists for this subject in this cycle`);
-        // Return the existing MSH ID
+        console.log('⚠️ MSH already exists for this subject in this cycle');
         return existingMsh.docs[0].data().mshId;
       }
 
@@ -394,14 +372,12 @@ export default function OneOnOneAssessGrid() {
         publishedAt: serverTimestamp()
       };
 
-      console.log('📝 Creating MSH with data:', mshData);
-
       await addDoc(collection(db, 'mshScores'), mshData);
 
       console.log(`✅ MSH Published: ${mshId} with alignment: ${alignmentStatus}`);
       return mshId;
     } catch (error) {
-      console.error('Error publishing MSH:', error);
+      console.error('❌ MSH publishing error:', error.message);
       throw error;
     }
   };
