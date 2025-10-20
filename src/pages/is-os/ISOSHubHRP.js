@@ -1,530 +1,394 @@
 // 📁 SAVE TO: src/pages/is-os/ISOSHubHRP.jsx
-// REFACTORED - Now uses AssessmentCycleGrid for consistency
+// HRP Hub - Human Resources Partner View
+// ✅ OPTIMIZED: Parallel queries, memoized calculations, reduced re-renders
+// ✅ Interactive month selector for dynamic stats filtering
+// ✅ Shows flagged assessments requiring HRP intervention
+// ✅ Uses AssessmentOrchestrator for consistency
 
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { collection, query, getDocs } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { 
-  Users, ArrowRight, AlertCircle, CheckCircle, 
-  Building2, FileText, UserCheck, TrendingUp, Search
-} from 'lucide-react';
-import Card from '../../components/ui/Card';
-import Button from '../../components/ui/Button';
-import Badge from '../../components/ui/Badge';
+import { AlertTriangle, CheckCircle, Clock, Calendar, Users, Shield } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import AssessmentCycleGrid from '../../components/hubs/AssessmentCycleGrid';
+import HubHeroBanner from '../../components/hubs/HubHeroBanner';
+import KPIStatCard from '../../components/hubs/KPIStatCard';
+import HubTabs from '../../components/hubs/HubTabs';
+import HubMetricsBar from '../../components/hubs/HubMetricsBar';
+import AssessmentOrchestrator from '../../components/hubs/AssessmentOrchestrator';
 
 function ISOSHubHRP() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   
-  // ==================== STATE ====================
-  const [gridMembers, setGridMembers] = useState([]);
-  const [allAssessments, setAllAssessments] = useState([]);
-  const [pillars, setPillars] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const CYCLE_START_DATE = useMemo(() => new Date(2025, 9, 1), []);
+  
   const [activeTab, setActiveTab] = useState('pending');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState(null);
+  const [pendingReviews, setPendingReviews] = useState([]);
+  const [completedReviews, setCompletedReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState({
-    totalHrpRequests: 0,
-    pendingReview: 0,
-    reviewedThisMonth: 0
+    cycleNumber: 1,
+    cycleType: '1x1',
+    currentMonth: 'OCTOBER 2025',
+    totalFlagged: 0,
+    pendingCount: 0,
+    completedCount: 0,
+    completedCount: 0,
+    totalCount: 0
   });
 
-  // ==================== HELPER FUNCTIONS ====================
-  const getFilteredMembers = () => {
-    let filtered = [...gridMembers];
+  const getCycleInfo = useCallback((date = new Date()) => {
+    const monthsSinceStart = (date.getFullYear() - CYCLE_START_DATE.getFullYear()) * 12 + 
+                             (date.getMonth() - CYCLE_START_DATE.getMonth());
     
-    // Filter by tab
-    switch (activeTab) {
-      case 'pending':
-        filtered = filtered.filter(m => 
-          m.currentAssessment?.hrpRequested && !m.currentAssessment?.hrpReviewedAt
-        );
-        break;
-      case 'completed':
-        filtered = filtered.filter(m => 
-          m.currentAssessment?.hrpRequested && m.currentAssessment?.hrpReviewedAt
-        );
-        break;
-      case 'all':
-        // Show all HRP assessments
-        filtered = filtered.filter(m => m.currentAssessment?.hrpRequested);
-        break;
-      default:
-        filtered = filtered.filter(m => 
-          m.currentAssessment?.hrpRequested && !m.currentAssessment?.hrpReviewedAt
-        );
+    const cycleNumber = Math.floor(monthsSinceStart / 3) + 1;
+    const cycleMonth = (monthsSinceStart % 3) + 1;
+    const cycleType = cycleMonth === 3 ? '360' : '1x1';
+    
+    const currentMonth = date.toLocaleDateString('en-US', { 
+      month: 'long', 
+      year: 'numeric' 
+    }).toUpperCase();
+    
+    const cycleStartMonthOffset = Math.floor(monthsSinceStart / 3) * 3;
+    const cycleStartDate = new Date(CYCLE_START_DATE);
+    cycleStartDate.setMonth(CYCLE_START_DATE.getMonth() + cycleStartMonthOffset);
+    
+    const cycleMonths = [];
+    for (let i = 0; i < 3; i++) {
+      const monthDate = new Date(cycleStartDate);
+      monthDate.setMonth(cycleStartDate.getMonth() + i);
+      cycleMonths.push({
+        month: monthDate.getMonth() + 1,
+        year: monthDate.getFullYear()
+      });
     }
-
-    // Apply search filter
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(m => 
-        m.name.toLowerCase().includes(term) ||
-        m.email.toLowerCase().includes(term) ||
-        m.pillarId.toLowerCase().includes(term) ||
-        m.assessorName.toLowerCase().includes(term) ||
-        (m.currentAssessment?.mshId && m.currentAssessment.mshId.toLowerCase().includes(term))
-      );
-    }
-
-    return filtered;
-  };
-
-  // ==================== DATA FETCHING ====================
-  useEffect(() => {
-    const fetchHRPData = async () => {
-      try {
-        setLoading(true);
-        
-        // Get all pillars for context
-        const pillarsRef = collection(db, 'pillars');
-        const pillarsSnapshot = await getDocs(pillarsRef);
-        const pillarsData = pillarsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setPillars(pillarsData);
-
-        // Get all users and build lookup map
-        const usersRef = collection(db, 'users');
-        const usersSnapshot = await getDocs(usersRef);
-        
-        console.log('👥 Total users in database:', usersSnapshot.size);
-        
-        const usersByAuthUid = {};
-        usersSnapshot.docs.forEach(doc => {
-          const userData = doc.data();
-          usersByAuthUid[doc.id] = {
-            id: doc.id,
-            ...userData
-          };
-        });
-        
-        console.log('👥 Users indexed by auth UID:', Object.keys(usersByAuthUid).length);
-
-        // Get all assessments with hrpRequested flag
-        const assessmentsRef = collection(db, 'assessments');
-        const allAssessmentsQuery = query(assessmentsRef);
-        const allAssessmentsSnapshot = await getDocs(allAssessmentsQuery);
-        
-        console.log('📊 Total assessments in database:', allAssessmentsSnapshot.size);
-        
-        const hrpAssessmentsList = [];
-        allAssessmentsSnapshot.forEach(doc => {
-          const data = doc.data();
-          
-          // Only include assessments where hrpRequested is true
-          if (data.hrpRequested !== true) {
-            return;
-          }
-          
-          console.log('✅ Found HRP assessment:', {
-            id: doc.id,
-            subjectId: data.subjectId,
-            assessorId: data.assessorId,
-            hrpRequested: data.hrpRequested,
-            hrpReviewedAt: data.hrpReviewedAt
-          });
-          
-          hrpAssessmentsList.push({
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt?.toDate?.() || null,
-            completedAt: data.completedAt?.toDate?.() || null,
-            hrpReviewedAt: data.hrpReviewedAt?.toDate?.() || null
-          });
-        });
-        
-        console.log('📋 Total HRP assessments found:', hrpAssessmentsList.length);
-
-        setAllAssessments(hrpAssessmentsList);
-
-        // Transform assessments into grid member format
-        const membersForGrid = hrpAssessmentsList.map(assessment => {
-          // ✅ FIX: Use subjectId (person being assessed) not assesseeId
-          const assesseeData = usersByAuthUid[assessment.subjectId] || {};
-          const assessorData = usersByAuthUid[assessment.assessorId] || {};
-          
-          console.log('🔍 Mapping assessment:', {
-            assessmentId: assessment.id,
-            subjectId: assessment.subjectId,
-            assessorId: assessment.assessorId,
-            assesseeData: assesseeData.displayName,
-            assessorData: assessorData.displayName
-          });
-          
-          return {
-            id: assessment.subjectId || assessment.id, // Use subjectId as member ID
-            name: assesseeData.displayName || 'Unknown',
-            email: assesseeData.email || 'unknown@example.com',
-            layer: assesseeData.layer || 'Unknown',
-            pillarId: assesseeData.pillar || 'unassigned',
-            subPillar: assesseeData.subPillar || null,
-            isSupervisor: assesseeData.isSupervisor || false,
-            assessorName: assessorData.displayName || 'Unknown',
-            isDirectReport: false, // HRP reviews all
-            currentAssessment: {
-              id: assessment.id,
-              status: assessment.status || 'completed',
-              composite: assessment.composite,
-              nineBoxPosition: assessment.nineBoxPosition,
-              alignmentStatus: assessment.alignmentStatus,
-              hrpRequested: assessment.hrpRequested,
-              hrpReviewedAt: assessment.hrpReviewedAt,
-              hrpReviewStatus: assessment.hrpReviewStatus,
-              mshId: assessment.mshId,
-              completedAt: assessment.completedAt
-            }
-          };
-        });
-
-        // Sort by completedAt descending (most recent first)
-        membersForGrid.sort((a, b) => {
-          const aTime = a.currentAssessment?.completedAt || new Date(0);
-          const bTime = b.currentAssessment?.completedAt || new Date(0);
-          return bTime - aTime;
-        });
-
-        setGridMembers(membersForGrid);
-
-        // Calculate metrics
-        const now = new Date();
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
-
-        const totalHrpRequests = hrpAssessmentsList.length;
-        const pendingCount = hrpAssessmentsList.filter(a => !a.hrpReviewedAt).length;
-
-        // Reviewed this month
-        const reviewedThisMonth = hrpAssessmentsList.filter(a => {
-          const reviewDate = a.hrpReviewedAt;
-          return reviewDate &&
-                 reviewDate.getMonth() === currentMonth &&
-                 reviewDate.getFullYear() === currentYear;
-        }).length;
-
-        setMetrics({
-          totalHrpRequests,
-          pendingReview: pendingCount,
-          reviewedThisMonth
-        });
-
-      } catch (error) {
-        console.error('Error fetching HRP data:', error);
-      } finally {
-        setLoading(false);
-      }
+    
+    return { 
+      cycleNumber, 
+      cycleMonth, 
+      cycleType, 
+      currentMonth,
+      cycleMonths,
+      cycleStartDate
     };
+  }, [CYCLE_START_DATE]);
 
-    fetchHRPData();
-  }, [user.uid]);
+  useEffect(() => {
+    if (user?.uid) {
+      fetchData();
+    }
+  }, [user, location.key, selectedMonth]);
 
-  // ==================== EVENT HANDLERS ====================
-  const handleViewAssessment = (assessmentId) => {
-    navigate(`/is-os/assessments/hrp-review/${assessmentId}`);
+  const fetchData = async () => {
+    if (!user?.uid) return;
+    
+    try {
+      setLoading(true);
+      
+      const now = new Date();
+      const displayMonth = selectedMonth ? selectedMonth.month : now.getMonth() + 1;
+      const displayYear = selectedMonth ? selectedMonth.year : now.getFullYear();
+      
+      const displayDate = new Date(displayYear, displayMonth - 1, 1);
+      const cycleInfo = getCycleInfo(displayDate);
+      
+      // ✅ OPTIMIZATION: Parallel queries
+      const [usersSnapshot, ...assessmentSnapshots] = await Promise.all([
+        getDocs(collection(db, 'users')),
+        ...cycleInfo.cycleMonths.map(cycleMonthInfo =>
+          getDocs(query(
+            collection(db, 'assessments'),
+            where('cycleMonth', '==', cycleMonthInfo.month),
+            where('cycleYear', '==', cycleMonthInfo.year)
+          ))
+        )
+      ]);
+
+      // Build user map
+      const userMap = {};
+      usersSnapshot.docs.forEach(doc => {
+        const userData = { id: doc.id, ...doc.data() };
+        userMap[userData.userId] = userData;
+      });
+
+      // Collect all assessments
+      const allCycleAssessments = assessmentSnapshots.flatMap(snapshot =>
+        snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate(),
+          completedAt: doc.data().completedAt?.toDate(),
+          hrpReviewedAt: doc.data().hrpReviewedAt?.toDate()
+        }))
+      );
+
+      // Filter for flagged assessments (not-aligned status OR alignmentStatus)
+      const flaggedAssessments = allCycleAssessments.filter(a => 
+        a.status === 'not-aligned' || a.alignmentStatus === 'not-aligned'
+      );
+
+      console.log('🚨 HRP Hub - Flagged assessments:', flaggedAssessments.length);
+
+      // Enrich assessments with user data
+      const enrichedAssessments = flaggedAssessments.map(a => {
+        const giverUid = a.giver?.uid || a.assessorId;
+        const receiverUid = a.receiver?.uid || a.subjectId;
+        const giverData = userMap[a.giver?.userId || a.assessorId] || Object.values(userMap).find(u => u.uid === giverUid);
+        const receiverData = userMap[a.receiver?.userId || a.subjectId] || Object.values(userMap).find(u => u.uid === receiverUid);
+        
+        return {
+          ...a,
+          assessorUid: giverUid,
+          assessorId: giverUid,
+          assessorName: a.giver?.displayName || a.assessorName || giverData?.displayName || 'Unknown',
+          assessorLayer: a.giver?.layer || giverData?.layer || 'Unknown',
+          assessorPillar: giverData?.pillar,
+          assessorSubPillar: giverData?.subPillar,
+          subjectUid: receiverUid,
+          subjectId: receiverUid,
+          subjectName: a.receiver?.displayName || a.subjectName || receiverData?.displayName || 'Unknown',
+          subjectEmail: receiverData?.email || '',
+          subjectLayer: a.receiver?.layer || receiverData?.layer || 'Unknown',
+          subjectPillar: receiverData?.pillar,
+          subjectSubPillar: receiverData?.subPillar,
+          myRole: 'hrp',
+          viewAccess: 'hrp-review'
+        };
+      });
+
+      // Split into pending and completed
+      const pending = enrichedAssessments.filter(a => 
+        !a.hrpReviewedAt && (!a.hrpReviewStatus || a.hrpReviewStatus === 'pending')
+      );
+
+      const completed = enrichedAssessments.filter(a => 
+        a.hrpReviewedAt || a.hrpReviewStatus === 'complete'
+      );
+
+      setPendingReviews(pending);
+      setCompletedReviews(completed);
+
+      const cycleExpectedTotal = cycleInfo.cycleMonths.reduce((total, m) => {
+        const is360 = [3, 6, 9, 12].includes(m.month);
+        return total + (is360 ? 93 : 24);
+      }, 0);
+
+      setMetrics({
+        cycleNumber: cycleInfo.cycleNumber,
+        cycleType: cycleInfo.cycleType,
+        currentMonth: cycleInfo.currentMonth,
+        cycleMonths: cycleInfo.cycleMonths,
+        displayMonth,
+        displayYear,
+        totalFlagged: flaggedAssessments.length,
+        pendingCount: pending.length,
+        completedCount: completed.length,
+        completedCount: allCycleAssessments.filter(a => a.status === 'completed' || a.status === 'calibrated').length,
+        totalCount: cycleExpectedTotal
+      });
+
+    } catch (error) {
+      console.error('❌ Error fetching HRP hub data:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleViewAllAssessments = () => {
-    navigate('/is-os/assessments/history');
-  };
+  const handleReviewAssessment = useCallback((assessment) => {
+    // Navigate to HRP Assessment Review page
+    navigate(`/is-os/hrp-assessment-review/${assessment.id}`);
+  }, [navigate]);
 
-  // ==================== RENDER ====================
+  const handleViewAssessment = useCallback((assessmentId) => {
+    // For completed reviews, also navigate to review page (read-only view)
+    navigate(`/is-os/hrp-assessment-review/${assessmentId}`);
+  }, [navigate]);
+
+  const handleMonthSelect = useCallback((month, year) => {
+    setSelectedMonth({ month, year });
+  }, []);
+
+  const tabs = useMemo(() => {
+    return [
+      { id: 'pending', label: 'Pending Review', count: pendingReviews.length, subtitle: 'Assessments requiring HRP intervention' },
+      { id: 'completed', label: 'Completed Reviews', count: completedReviews.length, subtitle: 'Documented HRP interventions' }
+    ];
+  }, [pendingReviews.length, completedReviews.length]);
+
+  const selectedMonthName = useMemo(() => {
+    return selectedMonth 
+      ? new Date(selectedMonth.year, selectedMonth.month - 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+      : 'Current';
+  }, [selectedMonth]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading HR Partner data...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading HRP dashboard...</p>
         </div>
       </div>
     );
   }
 
-  const filteredMembers = getFilteredMembers();
-
   return (
     <div className="min-h-screen bg-gray-50">
+      <HubHeroBanner gradient="red" title="ISOS Hub" subtitle="HRP View - Assessment Intervention & Support" icon={Shield} />
+      <HubMetricsBar gradient="red" cycleNumber={metrics.cycleNumber} cycleType={metrics.cycleType} currentMonth={metrics.currentMonth} completedCount={metrics.completedCount} totalCount={metrics.totalCount} />
       
-      {/* ==================== HERO BANNER ==================== */}
-      <div className="bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600 text-white">
-        <div className="max-w-7xl mx-auto px-6 py-10">
-          <div className="flex items-center gap-3 mb-3">
-            <UserCheck className="w-10 h-10" />
-            <div>
-              <h1 className="text-5xl font-bold">HRP Hub</h1>
-              <p className="text-pink-100 text-xl mt-2">
-                HR Partner Assessment Review & Support
-              </p>
+      {metrics.cycleMonths && (
+        <div className="max-w-7xl mx-auto px-6 -mt-4 mb-4">
+          <div className="bg-red-50 border-2 border-red-300 rounded-lg px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Calendar className="w-4 h-4 text-red-600" />
+                <span className="text-sm font-semibold text-red-900">
+                  Viewing: {selectedMonthName}
+                </span>
+                <div className="h-4 w-px bg-red-300"></div>
+                <div className="flex gap-2">
+                  {metrics.cycleMonths.map((m, i) => {
+                    const monthName = new Date(m.year, m.month - 1).toLocaleDateString('en-US', { month: 'short' });
+                    const isSelected = selectedMonth ? (selectedMonth.month === m.month && selectedMonth.year === m.year) : (m.month === new Date().getMonth() + 1 && m.year === new Date().getFullYear());
+                    
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => handleMonthSelect(m.month, m.year)}
+                        className={`px-3 py-1.5 rounded text-xs font-semibold transition-all ${
+                          isSelected
+                            ? 'bg-gradient-to-r from-red-600 to-pink-600 text-white shadow-md'
+                            : 'bg-red-100 text-red-700 border border-red-300 hover:bg-red-200 hover:border-red-400'
+                        }`}
+                      >
+                        {monthName} {m.year}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-6 py-8">
-        
-        {/* ==================== METRICS ==================== */}
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-700 mb-4">Review Queue Metrics</h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            
-            {/* Pending Reviews */}
-            <Card className="bg-gradient-to-br from-orange-50 to-red-50 border-2 border-orange-200">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <h3 className="text-sm font-medium text-gray-600 mb-1">Pending Reviews</h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-5xl font-bold text-gray-900">
-                      {metrics.pendingReview}
-                    </span>
-                  </div>
-                </div>
-                <AlertCircle className="w-8 h-8 text-orange-600" />
-              </div>
-              <div className="mt-4 pt-3 border-t border-orange-200">
-                <div className="text-xs text-gray-600 text-center">
-                  Awaiting HRP review
-                </div>
-              </div>
-            </Card>
-
-            {/* Completed This Month */}
-            <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <h3 className="text-sm font-medium text-gray-600 mb-1">Reviewed This Month</h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-5xl font-bold text-gray-900">
-                      {metrics.reviewedThisMonth}
-                    </span>
-                  </div>
-                </div>
-                <CheckCircle className="w-8 h-8 text-green-600" />
-              </div>
-              <div className="mt-4 pt-3 border-t border-green-200">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">Total HRP Requests</span>
-                  <span className="font-semibold text-gray-900">{metrics.totalHrpRequests}</span>
-                </div>
-              </div>
-            </Card>
-
-            {/* Total HRP Requests */}
-            <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-2 border-blue-200">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <h3 className="text-sm font-medium text-gray-600 mb-1">Total Requests</h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-5xl font-bold text-gray-900">
-                      {metrics.totalHrpRequests}
-                    </span>
-                  </div>
-                </div>
-                <FileText className="w-8 h-8 text-blue-600" />
-              </div>
-              <div className="mt-4 pt-3 border-t border-blue-200">
-                <div className="text-xs text-gray-600 text-center">
-                  All-time HRP flagged assessments
-                </div>
-              </div>
-            </Card>
-
-            {/* Active Pillars */}
-            <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <h3 className="text-sm font-medium text-gray-600 mb-1">Active Pillars</h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-5xl font-bold text-gray-900">
-                      {pillars.length}
-                    </span>
-                  </div>
-                </div>
-                <Building2 className="w-8 h-8 text-purple-600" />
-              </div>
-              <div className="mt-4 pt-3 border-t border-purple-200">
-                <div className="flex flex-wrap gap-1">
-                  {pillars.map(pillar => (
-                    <Badge key={pillar.id} variant="secondary" className="text-xs">
-                      {pillar.pillarId.toUpperCase()}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            </Card>
-
-          </div>
-        </div>
-
-        {/* ==================== TABS AND SEARCH ==================== */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">Assessment Review Queue</h2>
-              <p className="text-gray-600 mt-1">
-                Manage and review HRP-requested assessments
-              </p>
-            </div>
-            <Button
-              variant="secondary"
-              onClick={handleViewAllAssessments}
-            >
-              View All Assessments
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
-            <div className="flex items-center justify-between gap-4">
-              {/* Tab Navigation */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setActiveTab('pending')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    activeTab === 'pending'
-                      ? 'bg-orange-100 text-orange-700'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4" />
-                    Pending ({metrics.pendingReview})
-                  </div>
-                </button>
-                <button
-                  onClick={() => setActiveTab('completed')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    activeTab === 'completed'
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4" />
-                    Completed
-                  </div>
-                </button>
-                <button
-                  onClick={() => setActiveTab('all')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    activeTab === 'all'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
-                    All ({metrics.totalHrpRequests})
-                  </div>
-                </button>
-              </div>
-
-              {/* Search */}
-              <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search by name, pillar, or MSH ID..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ==================== ASSESSMENT GRID ==================== */}
-        <div className="mb-8">
-          <AssessmentCycleGrid
-            members={filteredMembers}
-            assessmentType="HRP Reviews"
-            currentMonthName={new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-            onViewAssessment={handleViewAssessment}
-            showStartButton={false}
-            emptyStateMessage={
-              searchTerm 
-                ? 'No assessments match your search'
-                : activeTab === 'pending'
-                ? 'No pending HRP reviews'
-                : activeTab === 'completed'
-                ? 'No completed HRP reviews'
-                : 'No HRP assessments found'
-            }
-            showPillarColumn={true}
-            showSubPillarColumn={true}
-            showTeamSizeColumn={true}
-            showAssessorColumn={true}
-            showHRPColumn={true}
-            viewButtonLabel="Review"
+        {/* KPI Stats Row */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <KPIStatCard 
+            title="Total Flagged" 
+            value={metrics.totalFlagged} 
+            secondaryValue="Not Aligned Assessments" 
+            maxValue={null}
+            icon={AlertTriangle} 
+            gradient="red" 
+            metadata={[
+              { label: "Pending Review", value: metrics.pendingCount },
+              { label: "Completed Review", value: metrics.completedCount }
+            ]} 
+          />
+          <KPIStatCard 
+            title="Pending Review" 
+            value={metrics.pendingCount} 
+            secondaryValue="Require HRP Attention" 
+            maxValue={null}
+            icon={Clock} 
+            gradient="orange" 
+            metadata={[
+              { label: "% of Flagged", value: metrics.totalFlagged > 0 ? `${((metrics.pendingCount / metrics.totalFlagged) * 100).toFixed(0)}%` : "—" }
+            ]} 
+          />
+          <KPIStatCard 
+            title="Completed Reviews" 
+            value={metrics.completedCount} 
+            secondaryValue="Documented Interventions" 
+            maxValue={null}
+            icon={CheckCircle} 
+            gradient="green" 
+            metadata={[
+              { label: "% of Flagged", value: metrics.totalFlagged > 0 ? `${((metrics.completedCount / metrics.totalFlagged) * 100).toFixed(0)}%` : "—" }
+            ]} 
           />
         </div>
 
-        {/* ==================== QUICK ACTIONS ==================== */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="bg-gradient-to-br from-blue-50 to-cyan-50">
-            <div className="flex items-start justify-between mb-4">
+        {/* Info Banner */}
+        {metrics.pendingCount > 0 && (
+          <div className="mb-8 p-4 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
               <div>
-                <h3 className="text-lg font-bold text-gray-900 mb-2">All Assessments</h3>
-                <p className="text-sm text-gray-600">
-                  Browse complete assessment history
+                <h3 className="text-sm font-semibold text-gray-900 mb-1">
+                  {metrics.pendingCount} {metrics.pendingCount === 1 ? 'Assessment' : 'Assessments'} Awaiting HRP Review
+                </h3>
+                <p className="text-xs text-gray-700">
+                  These assessments were flagged as "Not Aligned" during the assessment process and require Human Resources Partner intervention to facilitate resolution.
                 </p>
               </div>
-              <FileText className="w-8 h-8 text-blue-600" />
             </div>
-            <Button 
-              variant="secondary" 
-              className="w-full mt-4"
-              onClick={handleViewAllAssessments}
-            >
-              View History
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </Button>
-          </Card>
+          </div>
+        )}
 
-          <Card className="bg-gradient-to-br from-purple-50 to-pink-50">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 mb-2">Reports & Analytics</h3>
-                <p className="text-sm text-gray-600">
-                  Organization-wide health insights
-                </p>
-              </div>
-              <TrendingUp className="w-8 h-8 text-purple-600" />
-            </div>
-            <Button 
-              variant="secondary" 
-              className="w-full mt-4"
-              onClick={() => navigate('/is-os/reports')}
-            >
-              View Reports
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </Button>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-green-50 to-emerald-50">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 mb-2">User Management</h3>
-                <p className="text-sm text-gray-600">
-                  Manage users and organizational structure
-                </p>
-              </div>
-              <Users className="w-8 h-8 text-green-600" />
-            </div>
-            <Button 
-              variant="secondary" 
-              className="w-full mt-4"
-              onClick={() => navigate('/admin/users')}
-            >
-              Manage Users
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </Button>
-          </Card>
+        {/* Tabs */}
+        <div className="mb-8">
+          <HubTabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+          
+          {activeTab === 'pending' && (
+            <AssessmentOrchestrator 
+              assessments={pendingReviews} 
+              onStartAssessment={handleReviewAssessment}
+              onViewAssessment={handleReviewAssessment}
+              viewMode="hrp-pending" 
+              currentUserId={user.uid} 
+              userRole="HRP"
+              emptyStateMessage="No pending HRP reviews - all flagged assessments have been addressed" 
+            />
+          )}
+          
+          {activeTab === 'completed' && (
+            <AssessmentOrchestrator 
+              assessments={completedReviews} 
+              onStartAssessment={handleViewAssessment}
+              onViewAssessment={handleViewAssessment}
+              viewMode="hrp-completed" 
+              currentUserId={user.uid} 
+              userRole="HRP"
+              emptyStateMessage="No completed HRP reviews yet" 
+            />
+          )}
         </div>
 
+        {/* Help Section */}
+        <div className="bg-white rounded-lg shadow-sm border-2 border-gray-200 p-6">
+          <div className="flex items-start gap-3">
+            <Shield className="w-6 h-6 text-red-600 flex-shrink-0" />
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">HRP Review Process</h3>
+              <div className="text-sm text-gray-700 space-y-2">
+                <p>
+                  <strong>What triggers an HRP review?</strong> When an assessment is completed but the assessor and subject cannot reach alignment on the scores, the assessment is flagged as "Not Aligned" and routed to HRP.
+                </p>
+                <p>
+                  <strong>Your role:</strong> Facilitate a discussion between the assessor and subject to understand concerns, clarify expectations, and help reach resolution. Document the meeting outcome in the HRP notes.
+                </p>
+                <p>
+                  <strong>Process:</strong>
+                </p>
+                <ol className="list-decimal list-inside space-y-1 ml-4">
+                  <li>Review the original assessment details (scores, notes, alignment status)</li>
+                  <li>Schedule and conduct a meeting with both parties</li>
+                  <li>Document the discussion, agreements, and action items in the HRP Meeting Notes</li>
+                  <li>Mark the review as complete</li>
+                  <li>The HRP notes will appear at the bottom of the published MSH score</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

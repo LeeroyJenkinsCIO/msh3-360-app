@@ -1,4 +1,4 @@
-// App.js - Complete with Construction Page Check + ALL role-based hub routing
+// App.js - Complete with 360° Comparison Route Added
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -25,6 +25,11 @@ import AssessmentHistory from './pages/is-os/AssessmentHistory';
 import OneOnOneAssessGrid from './pages/is-os/1x1AssessGrid';
 import AssessmentDetailView from './pages/is-os/AssessmentDetailView';
 import HRPAssessmentReview from './pages/is-os/HRPAssessmentReview';
+import SelfAssessmentPage from './pages/is-os/SelfAssessmentPage';
+import ComparisonView360 from './pages/is-os/360ComparisonView'; // ✅ IMPORT
+
+// Import ISOS Org Page
+import ISOSOrgPage from './pages/isos-org/ISOSOrgPage';
 
 // Hub router - routes users to correct hub based on layer/role
 function SimpleHubRouter() {
@@ -76,7 +81,6 @@ function App() {
       <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-blue-900 flex items-center justify-center p-4">
         <div className="max-w-2xl w-full bg-white rounded-2xl shadow-2xl p-8 md:p-12 text-center">
           <div className="mb-8">
-            {/* MSH³ Logo - Using Route icon from lucide-react */}
             <div className="flex items-center justify-center gap-2 mb-6">
               <svg 
                 width="48" 
@@ -142,11 +146,21 @@ function App() {
             {/* Quick Align */}
             <Route path="quick-align" element={<UnifiedAssessmentPage />} />
             
+            {/* ISOS Org */}
+            <Route path="isos-org" element={
+              <ProtectedRoute>
+                <ISOSOrgPage />
+              </ProtectedRoute>
+            } />
+            
             {/* Projects */}
             <Route path="projects" element={<ProjectsDashboardPage />} />
             
             {/* Assessment History */}
             <Route path="is-os/assessments/history" element={<AssessmentHistory />} />
+            
+            {/* Self-Assessment Route */}
+            <Route path="is-os/self-assessment/:id" element={<SelfAssessmentPage />} />
             
             {/* 1x1 Assessment Routes - ID is now OPTIONAL */}
             <Route path="is-os/assessments/1x1/new" element={<OneOnOneAssessGrid />} />
@@ -155,6 +169,9 @@ function App() {
             
             {/* 360 Assessment Routes - ID is OPTIONAL (for future 360s) */}
             <Route path="is-os/assessments/360/edit/:id?" element={<OneOnOneAssessGrid />} />
+            
+            {/* ✅ NEW: 360° Comparison View Route */}
+            <Route path="is-os/360-comparative/:pairId" element={<ComparisonView360 />} />
             
             {/* HRP Assessment Review Route */}
             <Route path="is-os/assessments/hrp-review/:assessmentId" element={<HRPAssessmentReview />} />

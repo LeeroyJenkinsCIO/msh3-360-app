@@ -1,5 +1,5 @@
 // src/pages/is-os/AssessmentDetailView.js
-// FIXED VERSION - Corrected field names and score access
+// FIXED VERSION - Corrected field names, score access, and HRP badge display
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -8,7 +8,9 @@ import { db } from '../../firebase';
 import { ArrowLeft, AlertCircle, CheckCircle } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
+import Badge from '../../components/ui/Badge';
 import { getPillarDisplayName } from '../../utils/pillarHelpers';
+import { getHRPBadgeConfig } from '../../utils/hrpBadgeUtils';
 
 function AssessmentDetail() {
   const { id } = useParams();
@@ -365,16 +367,59 @@ function AssessmentDetail() {
               </div>
             </div>
 
-            {assessment.hrpRequested && (
-              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            {/* HRP Status - UPDATED to use badge utility */}
+            {(assessment.hrpRequested || assessment.hrpReviewedAt) && (
+              <div className={`p-4 rounded-lg border ${
+                assessment.hrpReviewedAt 
+                  ? 'bg-green-50 border-green-200' 
+                  : 'bg-yellow-50 border-yellow-200'
+              }`}>
                 <div className="flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <div className="font-semibold text-gray-900">HRP Involvement Requested</div>
-                    <p className="text-sm text-gray-600 mt-1">
-                      This assessment has been flagged for Human Resources Partner follow-up.
-                    </p>
-                  </div>
+                  {(() => {
+                    const badgeConfig = getHRPBadgeConfig(assessment);
+                    if (!badgeConfig) return null;
+                    
+                    const BadgeIcon = badgeConfig.icon;
+                    
+                    return (
+                      <>
+                        <BadgeIcon className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                          assessment.hrpReviewedAt ? 'text-green-600' : 'text-yellow-600'
+                        }`} />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Badge className={badgeConfig.className}>
+                              <BadgeIcon className="w-3 h-3 mr-1" />
+                              {badgeConfig.text}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-gray-600">
+                            {assessment.hrpReviewedAt 
+                              ? 'Human Resources Partner has completed their review of this assessment.'
+                              : 'This assessment has been flagged for Human Resources Partner follow-up.'
+                            }
+                          </p>
+                          {assessment.hrpReviewedAt && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              Reviewed: {formatDate(assessment.hrpReviewedAt)}
+                            </p>
+                          )}
+                          
+                          {/* HRP Review Notes */}
+                          {assessment.hrpReviewedAt && assessment.hrpMeetingNotes && (
+                            <div className="mt-4 pt-4 border-t border-green-200">
+                              <label className="block text-sm font-medium text-green-800 mb-2">
+                                HRP Review Notes
+                              </label>
+                              <div className="bg-white border border-green-200 rounded-lg p-3 text-sm text-gray-700 whitespace-pre-wrap">
+                                {assessment.hrpMeetingNotes}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )}

@@ -1,10 +1,14 @@
-// 📁 SAVE TO: src/pages/is-os/1x1AssessGrid.js
-// ✅ FIXED: Block 360 assessments from creating MSH (only 360ComparisonView should create 360 MSH)
-// 1x1AssessGrid.js - Complete with Sequential MSH ID Counter
+// NOTE: For the AssessmentCycleGrid.js badge styling, add this case to getStatusBadge():
+// 
+// if (assessment.status === 'not-aligned') {
+//   return <Badge className="bg-orange-100 text-orange-800 border border-orange-300">Not Aligned</Badge>;
+// }
+//
+// This will show "Not Aligned" assessments with an orange/reddish badge instead of green "Completed"
 
 import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
-import { doc, getDoc, updateDoc, serverTimestamp, collection, addDoc, query, where, getDocs, setDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, serverTimestamp, collection, addDoc, query, where, getDocs } from 'firebase/firestore';
 import { useAuth } from '../../contexts/AuthContext';
 import { useParams, useNavigate } from 'react-router-dom';
 import AssessmentGrid from '../../components/AssessmentGrid';
@@ -20,6 +24,7 @@ export default function OneOnOneAssessGrid() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
+  // Initialize with default values to prevent undefined errors
   const [scores, setScores] = useState({
     culture: { contribution: 1, growth: 1 },
     competencies: { contribution: 1, growth: 1 },
@@ -35,6 +40,7 @@ export default function OneOnOneAssessGrid() {
   
   const [hrpRequested, setHrpRequested] = useState(false);
 
+  // Safe calculation functions with null checks
   const calculateComposite = () => {
     try {
       const totalContribution = (scores?.culture?.contribution || 0) + 
@@ -125,10 +131,12 @@ export default function OneOnOneAssessGrid() {
         }
       }
       
+      // Use receiver.displayName if available
       if (!assessmentData.assesseeName && assessmentData.receiver?.displayName) {
         assessmentData.assesseeName = assessmentData.receiver.displayName;
       }
       
+      // Claim assessment if pending and no assessor
       if (assessmentData.status === 'pending' && !assessmentData.assessorId) {
         await updateDoc(assessmentRef, {
           assessorId: user.uid
@@ -136,6 +144,7 @@ export default function OneOnOneAssessGrid() {
         assessmentData.assessorId = user.uid;
       }
       
+      // Safely load scores with defaults
       if (assessmentData.scores) {
         setScores({
           culture: {
@@ -194,12 +203,13 @@ export default function OneOnOneAssessGrid() {
     try {
       const assessmentRef = doc(db, 'assessments', selectedAssessment.id);
 
+      // ✅ FIX: Status at ROOT level
       await updateDoc(assessmentRef, {
         scores,
         notes,
         composite: calculateComposite(),
         nineBoxPosition: calculateNineBoxPosition(),
-        status: 'draft',
+        status: 'draft',  // ✅ At root level
         hrpRequested,
         assessorId: user.uid,
         updatedAt: serverTimestamp()
@@ -229,50 +239,46 @@ export default function OneOnOneAssessGrid() {
       const nineBoxPosition = calculateNineBoxPosition();
       const assessmentRef = doc(db, 'assessments', selectedAssessment.id);
       
+      // 🎯 Check if this is a self-assessment
       const isSelfAssessment = selectedAssessment.assessmentType === 'self' 
         || selectedAssessment.isSelfAssessment;
-      
-      // ✅ NEW: Check if this is a 360 assessment
-      const is360Assessment = selectedAssessment.cycleType === '360';
 
+      // ✅ FIX: Status at ROOT level - use status field for alignment
       const updateData = {
         scores,
         notes,
         composite,
         nineBoxPosition,
-        status: alignmentStatus === 'aligned' ? 'completed' : 'not-aligned',
-        alignmentStatus: alignmentStatus,
+        status: alignmentStatus === 'aligned' ? 'completed' : 'not-aligned',  // ✅ Status reflects alignment
+        alignmentStatus: alignmentStatus,  // Also track in separate field for clarity
         hrpRequested,
         assessorId: user.uid,
         completedAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
 
-      console.log('🔍 Updating assessment with data:', updateData);
+      console.log('📝 Updating assessment with data:', updateData);
 
       await updateDoc(assessmentRef, updateData);
       
       console.log('✅ Assessment updated in Firestore with alignmentStatus:', alignmentStatus);
       
-      // ✅ CRITICAL FIX: Only create MSH for 1x1 assessments, NOT for 360 assessments
-      if (!isSelfAssessment && !is360Assessment && selectedAssessment.impact?.affectsMSH) {
-        console.log('📊 Publishing MSH for 1x1 Manager→DR assessment...');
+      // 🎯 CRITICAL FIX: Only publish MSH for NON-SELF assessments
+      if (!isSelfAssessment && selectedAssessment.impact?.affectsMSH) {
+        console.log('📊 Publishing MSH for Manager→DR or 360 peer assessment...');
         const mshId = await publishMshScore(selectedAssessment, composite, nineBoxPosition, alignmentStatus);
         
         console.log('✅ MSH created:', mshId, 'with alignment:', alignmentStatus);
         
-        // Update assessment with MSH ID in the correct path
+        // Update assessment with MSH ID
         await updateDoc(assessmentRef, {
-          'impact.mshId': mshId
+          mshId: mshId
         });
         
         alert(`Assessment published successfully! MSH ID: ${mshId}\nAlignment: ${alignmentStatus}\n\nReturning to hub.`);
       } else if (isSelfAssessment) {
         console.log('🚫 Self-assessment: MSH NOT published (used for 360 calculations only)');
         alert('Self-assessment completed successfully!\n\nReturning to hub.');
-      } else if (is360Assessment) {
-        console.log('🚫 360° assessment: MSH NOT published here (will be published from 360ComparisonView)');
-        alert(`360° assessment completed successfully!\nAlignment: ${alignmentStatus}\n\nMSH will be published after alignment review.\n\nReturning to hub.`);
       } else {
         alert(`Assessment published successfully!\nAlignment: ${alignmentStatus}\n\nReturning to hub.`);
       }
@@ -286,34 +292,7 @@ export default function OneOnOneAssessGrid() {
     }
   };
 
-  // ✨ NEW: Get next sequential MSH ID from counter
-  const getNextMshId = async () => {
-    try {
-      const counterRef = doc(db, 'counters', 'msh');
-      const counterSnap = await getDoc(counterRef);
-      
-      let nextNumber = 1;
-      if (counterSnap.exists()) {
-        nextNumber = (counterSnap.data().current || 0) + 1;
-      }
-      
-      // Update counter atomically
-      await setDoc(counterRef, { 
-        current: nextNumber,
-        lastUpdated: serverTimestamp()
-      }, { merge: true });
-      
-      // Return formatted ID: MSH-001, MSH-002, etc.
-      const mshId = `MSH-${String(nextNumber).padStart(3, '0')}`;
-      console.log('✅ Generated sequential MSH ID:', mshId);
-      return mshId;
-    } catch (error) {
-      console.error('Error generating MSH ID:', error);
-      throw new Error('Failed to generate MSH ID');
-    }
-  };
-
-  // 📊 Publish MSH Score (only for 1x1 non-self assessments)
+  // 📊 Publish MSH Score (only for non-self assessments)
   const publishMshScore = async (assessment, composite, nineBoxPosition, alignmentStatus) => {
     try {
       console.log('🔍 publishMshScore called with alignmentStatus:', alignmentStatus);
@@ -326,21 +305,18 @@ export default function OneOnOneAssessGrid() {
         throw new Error('Missing required data for MSH publishing');
       }
       
-      // ✨ Use sequential MSH ID from counter
-      const mshId = await getNextMshId();
+      const mshId = `MSH-${cycleId}-${affectsMSH}`;
       
-      // Check if MSH already exists for this cycle/subject combo
+      // Check if MSH already exists
       const mshQuery = query(
         collection(db, 'mshScores'),
-        where('cycleId', '==', cycleId),
-        where('subjectId', '==', affectsMSH)
+        where('mshId', '==', mshId)
       );
       const existingMsh = await getDocs(mshQuery);
 
       if (!existingMsh.empty) {
-        console.log(`⚠️ MSH already exists for this subject in this cycle`);
-        // Return the existing MSH ID
-        return existingMsh.docs[0].data().mshId;
+        console.log(`⚠️ MSH already exists: ${mshId}`);
+        return mshId;
       }
 
       const mshData = {
@@ -372,14 +348,14 @@ export default function OneOnOneAssessGrid() {
         cycleYear: assessment?.cycleYear || new Date().getFullYear(),
         cycleName: assessment?.cycleName || 'Unknown Cycle',
         
-        alignment: alignmentStatus,
+        alignment: alignmentStatus,  // ✅ Explicitly save alignment status
         hrpReviewRequested: hrpRequested,
         
         publishedBy: user.uid,
         publishedAt: serverTimestamp()
       };
 
-      console.log('🔍 Creating MSH with data:', mshData);
+      console.log('📝 Creating MSH with data:', mshData);
 
       await addDoc(collection(db, 'mshScores'), mshData);
 
@@ -420,8 +396,6 @@ export default function OneOnOneAssessGrid() {
 
   const isSelfAssessment = selectedAssessment.assessmentType === 'self' 
     || selectedAssessment.isSelfAssessment;
-  
-  const is360Assessment = selectedAssessment.cycleType === '360';
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -434,16 +408,11 @@ export default function OneOnOneAssessGrid() {
               {isSelfAssessment ? 'Self Assessment' : `1x1 Assessment: ${selectedAssessment.assesseeName}`}
             </h1>
             <p className="text-gray-600 text-sm">
-              {selectedAssessment.cycleName || `${selectedAssessment.cycleMonth}/${selectedAssessment.cycleYear}`} - {isSelfAssessment ? 'Self Assessment' : is360Assessment ? '360° Assessment' : 'Monthly 1x1 Assessment'}
+              {selectedAssessment.cycleName || `${selectedAssessment.cycleMonth}/${selectedAssessment.cycleYear}`} - {isSelfAssessment ? 'Self Assessment' : 'Monthly 1x1 Assessment'}
             </p>
             {isSelfAssessment && (
               <p className="text-xs text-purple-600 mt-2">
                 ℹ️ Self-assessments are used for 360 cycle calculations. MSH scores are published from manager and peer assessments.
-              </p>
-            )}
-            {is360Assessment && !isSelfAssessment && (
-              <p className="text-xs text-blue-600 mt-2">
-                ℹ️ 360° assessments will be aligned and published from the 360° Comparison View.
               </p>
             )}
           </div>

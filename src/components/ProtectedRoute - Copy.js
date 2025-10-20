@@ -1,4 +1,3 @@
-// 📁 SAVE TO: src/components/ProtectedRoute.jsx
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -47,17 +46,9 @@ const ProtectedRoute = ({
     const hasRequiredRole = roles.some(role => {
       const roleLower = role?.toLowerCase();
       
-      // 🔒 SECURITY: Admin role check with extra production validation
+      // Check both user.role and user.flags.isAdmin for admin access
       if (roleLower === 'admin') {
-        const isAdmin = user?.role?.toLowerCase() === 'admin' || user?.flags?.isAdmin === true;
-        
-        // In production, require EXPLICIT isAdmin flag (not just role)
-        if (process.env.NODE_ENV === 'production') {
-          return user?.flags?.isAdmin === true;
-        }
-        
-        // In development, allow either
-        return isAdmin;
+        return user?.role?.toLowerCase() === 'admin' || user?.flags?.isAdmin === true;
       }
       
       // Check user.role and user.layer (case-insensitive)
@@ -66,7 +57,7 @@ const ProtectedRoute = ({
     });
     
     if (!hasRequiredRole) {
-      return showAccessDenied ? <AccessDenied /> : <Navigate to="/is-os" replace />;
+      return showAccessDenied ? <AccessDenied /> : <Navigate to="/wiki" replace />;
     }
   }
 
@@ -136,10 +127,10 @@ const AccessDenied = () => {
               Go Back
             </button>
             <button
-              onClick={() => window.location.href = '/is-os'}
+              onClick={() => window.location.href = '/wiki'}
               className="flex-1 px-4 py-2 bg-primary text-white rounded hover:bg-primary-dark transition-colors"
             >
-              Go to Dashboard
+              Go to Wiki
             </button>
           </div>
         </div>

@@ -1,0 +1,95 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.flags.isAdmin == true;
+    }
+    
+    function isHRP() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.layer == 'HRP';
+    }
+    
+    function isExecutive() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.flags.isExecutive == true;
+    }
+    
+    function isPillarLeader() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.flags.isPillarLeader == true;
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      // Users can read their own profile and any other user (for org chart)
+      allow read: if isAuthenticated();
+      
+      // Only admins can create/update/delete users
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // Assessments collection
+    match /assessments/{assessmentId} {
+      // Read: User can read if they are subject, evaluator, or admin/HRP/executive/pillar leader
+      allow read: if isAuthenticated() && (
+        resource.data.subjectId == request.auth.uid ||
+        resource.data.evaluatorId == request.auth.uid ||
+        isAdmin() ||
+        isHRP() ||
+        isExecutive() ||
+        isPillarLeader()
+      );
+      
+      // Create: Only users with canInitiateAssessments flag
+      allow create: if isAuthenticated() && 
+                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.flags.canInitiateAssessments == true;
+      
+      // Update: Only evaluator, subject (for self-assessment), or admin/HRP
+      allow update: if isAuthenticated() && (
+        resource.data.evaluatorId == request.auth.uid ||
+        resource.data.subjectId == request.auth.uid ||
+        isAdmin() ||
+        isHRP()
+      );
+      
+      // Delete: Admin only
+      allow delete: if isAdmin();
+    }
+    
+    // Assessment Cycles
+    match /assessmentCycles/{cycleId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Pillars
+    match /pillars/{pillarId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // System settings and counters
+    match /systemSettings/{document} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+    
+    match /counters/{document} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+    
+    match /metadata/{document} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+  }
+}

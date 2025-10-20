@@ -1,411 +1,683 @@
 // 📁 SAVE TO: src/pages/is-os/ISOSHubISFSupervisor.jsx
-// ISF Supervisor Hub - Team supervisor view with direct reports
+// ISF Supervisor Hub - Leader in Training View
+// ✅ FULL ORGANIZATIONAL VISIBILITY - Matches ISL layout exactly
+// ✅ OPTIMIZED: Parallel queries, memoized calculations, reduced re-renders
+// ✅ Interactive month selector for dynamic stats filtering
+// ✅ 360° support with proper pairing logic
+// ✅ Leader in Training: Same strategic view as ISL
 
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { 
-  Calendar, Zap, ArrowRight, 
-  TrendingUp, Award, User, Users, Target, CheckCircle, AlertTriangle
-} from 'lucide-react';
-import Card from '../../components/ui/Card';
-import Button from '../../components/ui/Button';
+import { Compass, Award, Building2, User, Calendar, BarChart3, TrendingUp, Zap } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import AssessmentCycleGrid from '../../components/hubs/AssessmentCycleGrid';
+import HubHeroBanner from '../../components/hubs/HubHeroBanner';
+import KPIStatCard from '../../components/hubs/KPIStatCard';
+import HubTabs from '../../components/hubs/HubTabs';
+import HubMetricsBar from '../../components/hubs/HubMetricsBar';
+import AssessmentOrchestrator from '../../components/hubs/AssessmentOrchestrator';
+import PublishedMSHScoresGrid from '../../components/hubs/PublishedMSHScoresGrid';
 
 function ISOSHubISFSupervisor() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   
-  // ==================== CONSTANTS ====================
-  const CYCLE_START_DATE = new Date(2025, 9, 1);
+  const CYCLE_START_DATE = useMemo(() => new Date(2025, 9, 1), []);
   
-  // ==================== STATE ====================
-  const [activeTab, setActiveTab] = useState('team'); // 'team' or 'myassessments'
-  const [gridMembers, setGridMembers] = useState([]);
-  const [allAssessments, setAllAssessments] = useState([]); // NEW: Store all assessments
+  const [activeTab, setActiveTab] = useState('give');
+  const [selectedMonth, setSelectedMonth] = useState(null);
+  const [assessmentsIGive, setAssessmentsIGive] = useState([]);
+  const [assessmentsIReceive, setAssessmentsIReceive] = useState([]);
+  const [pairings360, setPairings360] = useState([]);
+  const [mshScoresIReceive, setMSHScoresIReceive] = useState([]);
+  const [myDirectReports, setMyDirectReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState({
     cycleNumber: 1,
-    cycleInYear: 1,
-    cycleMonth: 1,
-    assessmentType: '1x1',
-    currentMonthName: 'October 2025',
-    deadline: null,
-    isPastDeadline: false,
-    totalAssessmentsNeeded: 0,
-    completedAssessments: 0,
-    myLastAssessment: null,
-    myComposite: null,
-    myLastAssessed: null,
-    teamAvgComposite: 0,
-    teamTier: 'Low',
-    teamTrend: 'stable',
-    teamSize: 0,
-    teamZones: { below: 0, baseline: 0, above: 0, exceptional: 0 },
-    assessedThisMonth: 0,
-    alignmentRate: 0
+    cycleType: '1x1',
+    currentMonth: 'OCTOBER 2025',
+    isgsCompassScore: null,
+    isgsCompassCompleted: 0,
+    isgsCompassTotal: 24,
+    isgsCompassCumulativeAvg: null,
+    isgsCompassCumulativeCount: 0,
+    isgsCompassTrend: null,
+    islScore: null,
+    islCompleted: 0,
+    islTotal: 5,
+    islCumulativeAvg: null,
+    islCumulativeCount: 0,
+    islTrend: null,
+    allPillarsScore: null,
+    allPillarsCompleted: 0,
+    allPillarsTotal: 19,
+    allPillarsCumulativeAvg: null,
+    allPillarsCumulativeCount: 0,
+    allPillarsTrend: null,
+    myScore: null,
+    myCompleted: 0,
+    myTotal: 1,
+    myCumulativeAvg: null,
+    myCumulativeCount: 0,
+    myTrend: null,
+    pillarBreakdown: [],
+    orgScore: null,
+    orgCompleted: 0,
+    orgTotal: 24,
+    orgCumulativeAvg: null,
+    orgCumulativeCount: 0,
+    orgTrend: null,
+    completedCount: 0,
+    totalCount: 0
   });
 
-  // ==================== HELPER FUNCTIONS ====================
-  const calculateDeadline = (monthStart) => {
-    let businessDays = 0;
-    let currentDate = new Date(monthStart);
-    
-    while (businessDays < 5) {
-      currentDate.setDate(currentDate.getDate() + 1);
-      const dayOfWeek = currentDate.getDay();
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-        businessDays++;
-      }
-    }
-    
-    return currentDate;
-  };
+  const calcAvg = useCallback((scores) => {
+    if (!scores || scores.length === 0) return null;
+    const sum = scores.reduce((a, b) => a + b, 0);
+    return (sum / scores.length).toFixed(1);
+  }, []);
 
-  const getCurrentCycleInfo = (date = new Date()) => {
+  const getCycleInfo = useCallback((date = new Date()) => {
     const monthsSinceStart = (date.getFullYear() - CYCLE_START_DATE.getFullYear()) * 12 + 
                              (date.getMonth() - CYCLE_START_DATE.getMonth());
     
     const cycleNumber = Math.floor(monthsSinceStart / 3) + 1;
     const cycleMonth = (monthsSinceStart % 3) + 1;
-    const assessmentType = cycleMonth === 3 ? '360' : '1x1';
-    const cycleInYear = ((cycleNumber - 1) % 4) + 1;
+    const cycleType = cycleMonth === 3 ? '360' : '1x1';
     
-    const currentMonthName = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
+    const currentMonth = date.toLocaleDateString('en-US', { 
+      month: 'long', 
+      year: 'numeric' 
+    }).toUpperCase();
     
-    const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
-    const deadline = calculateDeadline(monthStart);
-    const isPastDeadline = date > deadline;
+    const cycleStartMonthOffset = Math.floor(monthsSinceStart / 3) * 3;
+    const cycleStartDate = new Date(CYCLE_START_DATE);
+    cycleStartDate.setMonth(CYCLE_START_DATE.getMonth() + cycleStartMonthOffset);
     
-    return {
-      cycleNumber,
-      cycleInYear,
-      cycleMonth,
-      assessmentType,
-      currentMonthName,
-      deadline,
-      isPastDeadline
+    const cycleMonths = [];
+    for (let i = 0; i < 3; i++) {
+      const monthDate = new Date(cycleStartDate);
+      monthDate.setMonth(cycleStartDate.getMonth() + i);
+      cycleMonths.push({
+        month: monthDate.getMonth() + 1,
+        year: monthDate.getFullYear()
+      });
+    }
+    
+    return { 
+      cycleNumber, 
+      cycleMonth, 
+      cycleType, 
+      currentMonth,
+      cycleMonths,
+      cycleStartDate
     };
-  };
+  }, [CYCLE_START_DATE]);
 
-  const getCompositeZone = (score) => {
-    if (score >= 0 && score <= 4) return 'below';
-    if (score >= 5 && score <= 6) return 'baseline';
-    if (score >= 7 && score <= 10) return 'above';
-    if (score >= 11 && score <= 12) return 'exceptional';
-    return 'baseline';
-  };
-
-  const calculateZoneDistribution = (scores) => {
-    const zones = { below: 0, baseline: 0, above: 0, exceptional: 0 };
-    scores.forEach(score => {
-      const zone = getCompositeZone(score);
-      zones[zone]++;
-    });
-    return zones;
-  };
-
-  const getPercentage = (count, total) => {
-    if (total === 0) return '0%';
-    return `${Math.round((count / total) * 100)}%`;
-  };
-
-  const getCompositeZoneName = (score) => {
-    if (score >= 11 && score <= 12) return 'Exceptional';
-    if (score >= 7 && score <= 10) return 'Above Baseline';
-    if (score >= 5 && score <= 6) return 'Baseline';
-    if (score >= 0 && score <= 4) return 'Below Baseline';
-    return 'Not Assessed';
-  };
-
-  // ==================== DATA FETCHING ====================
   useEffect(() => {
-    const fetchSupervisorData = async () => {
-      try {
-        setLoading(true);
-        
-        const now = new Date();
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
-        const cycleInfo = getCurrentCycleInfo(now);
-        
-        // Fetch all data in parallel
-        const [allUsersSnapshot, allAssessmentsSnapshot] = await Promise.all([
-          getDocs(collection(db, 'users')),
+    if (user?.uid) {
+      fetchData();
+    }
+  }, [user, location.key, selectedMonth]);
+
+  const fetchData = async () => {
+    if (!user?.uid) return;
+    
+    try {
+      setLoading(true);
+      
+      const now = new Date();
+      const displayMonth = selectedMonth ? selectedMonth.month : now.getMonth() + 1;
+      const displayYear = selectedMonth ? selectedMonth.year : now.getFullYear();
+      
+      const displayDate = new Date(displayYear, displayMonth - 1, 1);
+      const cycleInfo = getCycleInfo(displayDate);
+      
+      const prevMonth = displayMonth === 1 ? 12 : displayMonth - 1;
+      const prevYear = displayMonth === 1 ? displayYear - 1 : displayYear;
+      
+      // ✅ OPTIMIZATION: Parallel queries
+      const [pillarsSnapshot, usersSnapshot, mshSnapshot, ...assessmentSnapshots] = await Promise.all([
+        getDocs(collection(db, 'pillars')),
+        getDocs(collection(db, 'users')),
+        getDocs(query(
+          collection(db, 'mshScores'),
+          where('publishedAt', '>=', Timestamp.fromDate(cycleInfo.cycleStartDate))
+        )),
+        ...cycleInfo.cycleMonths.map(cycleMonthInfo =>
           getDocs(query(
             collection(db, 'assessments'),
-            where('cycleMonth', '==', currentMonth + 1),
-            where('cycleYear', '==', currentYear)
+            where('cycleMonth', '==', cycleMonthInfo.month),
+            where('cycleYear', '==', cycleMonthInfo.year)
           ))
-        ]);
-        
-        // Build user maps
-        const allUsersMap = {};
-        const userIdToAuthUid = {};
-        const usersByAuthUid = {};
-        
-        allUsersSnapshot.docs.forEach(doc => {
-          const userData = doc.data();
-          allUsersMap[userData.userId] = userData.displayName || 'Unknown';
-          if (userData.userId && doc.id) {
-            userIdToAuthUid[userData.userId] = doc.id;
-            usersByAuthUid[doc.id] = userData;
-          }
-        });
-        
-        // NEW: Process all assessments into standardized format
-        const assessmentsArray = [];
-        allAssessmentsSnapshot.docs.forEach(doc => {
-          const data = doc.data();
-          const employeeData = usersByAuthUid[data.subjectId];
-          const managerData = usersByAuthUid[data.assessorId];
-          
-          assessmentsArray.push({
-            id: doc.id,
-            employeeId: data.subjectId,
-            employeeName: employeeData?.displayName || 'Unknown',
-            employeeEmail: employeeData?.email || '',
-            employeeLayer: employeeData?.layer || 'Unknown',
-            managerId: data.assessorId,
-            managerName: managerData?.displayName || 'Unknown',
-            cycleTitle: `${cycleInfo.currentMonthName} - ${cycleInfo.assessmentType}`,
-            cycleStartDate: new Date(currentYear, currentMonth, 1),
-            cycleEndDate: new Date(currentYear, currentMonth + 1, 0),
-            dueDate: cycleInfo.deadline,
-            status: data.status || 'pending',
-            compositeScore: data.composite || null,
-            hrpRequested: data.hrpRequested || false,
-            hrpReviewedAt: data.hrpReviewedAt || null,
-            isSelfAssessment: data.isSelfAssessment || false,
-            pillar: employeeData?.pillar,
-            pillarId: employeeData?.pillar,
-            subPillar: employeeData?.subPillar,
-            nineBoxPosition: data.nineBoxPosition || null,
-            mshId: data.mshId || doc.id.slice(0, 8),
-            createdAt: data.createdAt?.toDate?.() || null,
-            completedAt: data.completedAt?.toDate?.() || null
-          });
-        });
-        
-        console.log('ISFsupervisor - Total assessments transformed:', assessmentsArray.length);
-        console.log('ISFsupervisor - Current user UID:', user.uid);
-        console.log('ISFsupervisor - Sample assessment:', assessmentsArray[0]);
-        
-        setAllAssessments(assessmentsArray);
-        
-        // Group assessments by subject
-        const assessmentsBySubject = {};
-        allAssessmentsSnapshot.docs.forEach(doc => {
-          const assessmentData = {
-            id: doc.id,
-            ...doc.data(),
-            createdAt: doc.data().createdAt?.toDate?.() || null,
-            completedAt: doc.data().completedAt?.toDate?.() || null
-          };
-          
-          const subjectId = assessmentData.subjectId;
-          if (!assessmentsBySubject[subjectId]) {
-            assessmentsBySubject[subjectId] = [];
-          }
-          assessmentsBySubject[subjectId].push(assessmentData);
-        });
-        
-        // Get direct reports (ISF members managed by this supervisor)
-        const usersRef = collection(db, 'users');
-        const directReportsQuery = query(
-          usersRef,
-          where('managerId', '==', user.userId)
-        );
-        const membersSnapshot = await getDocs(directReportsQuery);
-        
-        const allMembers = [];
-        
-        for (const doc of membersSnapshot.docs) {
-          const memberData = doc.data();
-          
-          // Get member's Firebase auth UID
-          const memberAuthUid = userIdToAuthUid[memberData.userId];
-          if (!memberAuthUid) continue;
-          
-          // Get assessments for this member
-          const memberAssessments = assessmentsBySubject[memberAuthUid] || [];
-          
-          let latestAssessment = null;
-          
-          if (memberAssessments.length > 0) {
-            const sortedAssessments = memberAssessments.sort((a, b) => {
-              const aTime = a.createdAt || new Date(0);
-              const bTime = b.createdAt || new Date(0);
-              return bTime - aTime;
-            });
-            
-            // Look for pending assessment first
-            const pendingAssessment = sortedAssessments.find(a => a.status === 'pending');
-            
-            if (pendingAssessment) {
-              latestAssessment = pendingAssessment;
-            } else {
-              // Look for completed assessments by this supervisor
-              const completedAssessments = sortedAssessments
-                .filter(a => {
-                  return a.completedAt && 
-                         a.assessorId === user.uid && 
-                         (a.status === 'completed' || a.status === 'not-aligned');
-                })
-                .sort((a, b) => b.completedAt - a.completedAt);
-              
-              if (completedAssessments.length > 0) {
-                latestAssessment = completedAssessments[0];
-              }
-            }
-          }
+        )
+      ]);
 
-          const memberInfo = {
-            id: memberData.userId,
-            name: memberData.displayName || 'Unknown',
-            email: memberData.email || '',
-            layer: memberData.layer || 'ISF',
-            pillarRole: memberData.pillarRole || 'Team Member',
-            subPillar: memberData.subPillar || 'Unassigned',
-            pillarId: memberData.pillar || null,
-            managerId: memberData.managerId,
-            assessorName: user.displayName,
-            isSupervisor: memberData.flags?.isSupervisor || false,
-            isDirectReport: true,
-            currentAssessment: latestAssessment,
-            teamSize: 0
-          };
-          
-          allMembers.push(memberInfo);
+      const allPillars = pillarsSnapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(pillar => pillar && pillar.pillarName);
+
+      // Build user map
+      const userMap = {};
+      const islUsers = [];
+      const isfUsers = [];
+      const myDirectReportsList = [];
+      
+      usersSnapshot.docs.forEach(doc => {
+        const userData = { id: doc.id, ...doc.data() };
+        userMap[userData.userId] = userData;
+        
+        if (userData.layer === 'ISL') {
+          islUsers.push(userData);
+        } else if (
+          userData.layer === 'ISF' || 
+          userData.layer === 'ISF Supervisor' ||
+          userData.flags?.isSupervisor === true
+        ) {
+          isfUsers.push(userData);
         }
         
-        setGridMembers(allMembers);
-        
-        // Get supervisor's own assessment (from their manager/ISL)
-        let myLastAssessment = null;
-        let myComposite = null;
-        let myLastAssessed = null;
-        
-        const myAssessments = assessmentsBySubject[user.uid] || [];
-        const sortedMyAssessments = myAssessments
-          .filter(a => a.composite && (a.status === 'completed' || a.status === 'not-aligned'))
-          .sort((a, b) => {
-            const aTime = a.createdAt || new Date(0);
-            const bTime = b.createdAt || new Date(0);
-            return bTime - aTime;
-          });
-        
-        if (sortedMyAssessments.length > 0) {
-          const latest = sortedMyAssessments[0];
-          myLastAssessment = latest;
-          myComposite = latest.composite;
-          if (latest.completedAt) {
-            myLastAssessed = `${latest.completedAt.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`;
-          }
+        // Collect my direct reports
+        if (userData.managerId === user.userId) {
+          myDirectReportsList.push(userData);
         }
+      });
 
-        // Calculate team metrics
-        const publishedAssessments = allMembers.filter(m => 
-          m.currentAssessment?.composite !== undefined && 
-          (m.currentAssessment.status === 'completed' || m.currentAssessment.status === 'not-aligned')
-        );
-        
-        const teamScores = publishedAssessments.map(m => m.currentAssessment.composite);
-        const teamAvgComposite = teamScores.length > 0
-          ? (teamScores.reduce((sum, score) => sum + score, 0) / teamScores.length)
-          : 0;
+      setMyDirectReports(myDirectReportsList);
 
-        const teamZones = calculateZoneDistribution(teamScores);
+      const allMSH = mshSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        publishedAt: doc.data().publishedAt?.toDate()
+      }));
 
-        let teamTier = 'Low';
-        if (teamAvgComposite >= 9) teamTier = 'High';
-        else if (teamAvgComposite >= 5) teamTier = 'Mid';
+      // Cumulative MSH (cycle start → selected month)
+      const cumulativeMSH = allMSH.filter(m => 
+        (m.cycleYear < displayYear) || 
+        (m.cycleYear === displayYear && m.cycleMonth <= displayMonth)
+      );
 
-        const assessedThisMonth = allMembers.filter(m => {
-          if (!m.currentAssessment?.completedAt) return false;
-          const assessmentDate = m.currentAssessment.completedAt;
-          return assessmentDate.getMonth() === currentMonth && 
-                 assessmentDate.getFullYear() === currentYear &&
-                 (m.currentAssessment.status === 'completed' || m.currentAssessment.status === 'not-aligned');
-        }).length;
+      // ISL MSH
+      const islMSH = allMSH.filter(m => islUsers.some(u => u.userId === m.subjectId));
+      const cumulativeISL = cumulativeMSH.filter(m => islUsers.some(u => u.userId === m.subjectId));
 
-        const alignedMembers = publishedAssessments.filter(m => 
-          m.currentAssessment.alignmentStatus === 'aligned'
-        ).length;
-        const alignmentRate = publishedAssessments.length > 0
-          ? Math.round((alignedMembers / publishedAssessments.length) * 100)
-          : 0;
+      // All ISF/ISF Supervisor MSH
+      const allISFMSH = allMSH.filter(m => isfUsers.some(u => u.userId === m.subjectId));
+      const cumulativeAllISF = cumulativeMSH.filter(m => isfUsers.some(u => u.userId === m.subjectId));
 
-        const totalAssessmentsNeeded = allMembers.length;
-        const completedAssessments = assessedThisMonth;
+      // My MSH (received from ISL manager)
+      const myMSH = allMSH.filter(m => m.subjectId === user.uid);
+      const cumulativeMy = cumulativeMSH.filter(m => m.subjectId === user.uid);
 
-        setMetrics({
-          cycleNumber: cycleInfo.cycleNumber,
-          cycleInYear: cycleInfo.cycleInYear,
-          cycleMonth: cycleInfo.cycleMonth,
-          assessmentType: cycleInfo.assessmentType,
-          currentMonthName: cycleInfo.currentMonthName,
-          deadline: cycleInfo.deadline,
-          isPastDeadline: cycleInfo.isPastDeadline,
-          totalAssessmentsNeeded,
-          completedAssessments,
-          myLastAssessment,
-          myComposite,
-          myLastAssessed,
-          teamAvgComposite: teamAvgComposite.toFixed(1),
-          teamTier,
-          teamTrend: 'stable',
-          teamSize: allMembers.length,
-          teamZones,
-          assessedThisMonth,
-          alignmentRate
-        });
-
-      } catch (error) {
-        console.error('Error fetching supervisor data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchSupervisorData();
-  }, [user.userId]);
-
-  // ==================== EVENT HANDLERS ====================
-  const handleStartAssessments = (member) => {
-    // member can be either team member object or assessment in My Assessments tab
-    if (member.currentAssessment && member.currentAssessment.id) {
-      navigate(`/is-os/assessments/${metrics.assessmentType}/edit/${member.currentAssessment.id}`);
-    } else {
-      const firstPending = gridMembers.find(m => 
-        m.currentAssessment?.status === 'pending' || !m.currentAssessment
+      // Current month MSH
+      const currentMonthMSH = allMSH.filter(m => 
+        m.cycleMonth === displayMonth && m.cycleYear === displayYear
       );
       
-      if (firstPending) {
-        if (firstPending.currentAssessment?.id) {
-          navigate(`/is-os/assessments/${metrics.assessmentType}/edit/${firstPending.currentAssessment.id}`);
-        } else {
-          navigate(`/is-os/assessments/${metrics.assessmentType}/edit`);
-        }
-      } else {
-        navigate(`/is-os/assessments/${metrics.assessmentType}/edit`);
+      const currentMonthISL = currentMonthMSH.filter(m => 
+        islUsers.some(u => u.userId === m.subjectId)
+      );
+      
+      const currentMonthAllISF = currentMonthMSH.filter(m => 
+        isfUsers.some(u => u.userId === m.subjectId)
+      );
+      
+      const currentMonthMy = currentMonthMSH.filter(m => 
+        m.subjectId === user.uid
+      );
+
+      // Previous month MSH
+      const prevMonthMSH = allMSH.filter(m => 
+        m.cycleMonth === prevMonth && m.cycleYear === prevYear
+      );
+      
+      const prevMonthISL = prevMonthMSH.filter(m => 
+        islUsers.some(u => u.userId === m.subjectId)
+      );
+      
+      const prevMonthAllISF = prevMonthMSH.filter(m => 
+        isfUsers.some(u => u.userId === m.subjectId)
+      );
+      
+      const prevMonthMy = prevMonthMSH.filter(m => 
+        m.subjectId === user.uid
+      );
+
+      // Calculate completion counts
+      const uniqueISLCompleted = new Set(currentMonthISL.map(m => m.subjectId)).size;
+      const uniqueAllISFCompleted = new Set(currentMonthAllISF.map(m => m.subjectId)).size;
+      const uniqueMyCompleted = currentMonthMy.length > 0 ? 1 : 0;
+
+      // Calculate scores
+      const islScore = calcAvg(currentMonthISL.map(m => m.composite));
+      const allPillarsScore = calcAvg(currentMonthAllISF.map(m => m.composite));
+      const myScore = calcAvg(currentMonthMy.map(m => m.composite));
+
+      const prevIslScore = calcAvg(prevMonthISL.map(m => m.composite));
+      const prevAllPillarsScore = calcAvg(prevMonthAllISF.map(m => m.composite));
+      const prevMyScore = calcAvg(prevMonthMy.map(m => m.composite));
+
+      // Calculate trends
+      const islTrend = (islScore && prevIslScore)
+        ? parseFloat((parseFloat(islScore) - parseFloat(prevIslScore)).toFixed(1))
+        : "---";
+      
+      const allPillarsTrend = (allPillarsScore && prevAllPillarsScore)
+        ? parseFloat((parseFloat(allPillarsScore) - parseFloat(prevAllPillarsScore)).toFixed(1))
+        : "---";
+      
+      const myTrend = (myScore && prevMyScore)
+        ? parseFloat((parseFloat(myScore) - parseFloat(prevMyScore)).toFixed(1))
+        : "---";
+
+      // Individual pillar breakdown
+      const pillarHealthScores = allPillars.map(pillar => {
+        const pillarISFUsers = isfUsers.filter(u => u.pillar === pillar.id);
+        const pillarMSH = allMSH.filter(m => pillarISFUsers.some(u => u.userId === m.subjectId));
+        const pillarCumulative = cumulativeMSH.filter(m => pillarISFUsers.some(u => u.userId === m.subjectId));
+        
+        const currentMonthPillarMSH = pillarMSH.filter(m => 
+          m.cycleMonth === displayMonth && m.cycleYear === displayYear
+        );
+        
+        const prevMonthPillarMSH = pillarMSH.filter(m => 
+          m.cycleMonth === prevMonth && m.cycleYear === prevYear
+        );
+        
+        const uniqueCompleted = new Set(currentMonthPillarMSH.map(m => m.subjectId)).size;
+        const pillarCurrentScore = calcAvg(currentMonthPillarMSH.map(m => m.composite));
+        const pillarPrevScore = calcAvg(prevMonthPillarMSH.map(m => m.composite));
+        
+        const pillarTrend = (pillarCurrentScore && pillarPrevScore)
+          ? parseFloat((parseFloat(pillarCurrentScore) - parseFloat(pillarPrevScore)).toFixed(1))
+          : "---";
+        
+        return {
+          id: pillar.id,
+          name: pillar.pillarName,
+          score: pillarCurrentScore,
+          completed: uniqueCompleted,
+          total: pillarISFUsers.length,
+          cumulativeAvg: calcAvg(pillarCumulative.map(m => m.composite)),
+          cumulativeCount: pillarCumulative.length,
+          trend: pillarTrend
+        };
+      });
+
+      // ISGS Compass calculation (ISL 40% + All Pillars 60%)
+      let isgsCompassScore = null;
+      let prevIsgsCompassScore = null;
+      let isgsCompassTrend = "---";
+      
+      if (islScore !== null && allPillarsScore !== null) {
+        isgsCompassScore = ((parseFloat(islScore) * 0.4) + (parseFloat(allPillarsScore) * 0.6)).toFixed(1);
       }
+      
+      if (prevIslScore !== null && prevAllPillarsScore !== null) {
+        prevIsgsCompassScore = ((parseFloat(prevIslScore) * 0.4) + (parseFloat(prevAllPillarsScore) * 0.6)).toFixed(1);
+      }
+      
+      if (isgsCompassScore && prevIsgsCompassScore) {
+        isgsCompassTrend = parseFloat((parseFloat(isgsCompassScore) - parseFloat(prevIsgsCompassScore)).toFixed(1));
+      }
+      
+      const isgsCompassCompleted = uniqueISLCompleted + uniqueAllISFCompleted;
+      const isgsCompassTotal = islUsers.length + isfUsers.length;
+      const isgsCompassCumulativeScores = [...cumulativeISL, ...cumulativeAllISF].map(m => m.composite);
+
+      // Org-wide completion percentage
+      const orgCompleted = uniqueISLCompleted + uniqueAllISFCompleted;
+      const orgTotal = islUsers.length + isfUsers.length;
+      
+      const orgCompletionPercent = orgTotal > 0 
+        ? ((orgCompleted / orgTotal) * 100).toFixed(0)
+        : 0;
+      
+      const prevMonthISLCompleted = new Set(prevMonthISL.map(m => m.subjectId)).size;
+      const prevMonthAllISFCompleted = new Set(prevMonthAllISF.map(m => m.subjectId)).size;
+      const prevOrgCompleted = prevMonthISLCompleted + prevMonthAllISFCompleted;
+      const prevOrgCompletionPercent = orgTotal > 0
+        ? ((prevOrgCompleted / orgTotal) * 100).toFixed(0)
+        : 0;
+      
+      const cumulativeUniqueCompleted = new Set(cumulativeMSH.map(m => m.subjectId)).size;
+      const cumulativeCompletionPercent = orgTotal > 0
+        ? ((cumulativeUniqueCompleted / orgTotal) * 100).toFixed(0)
+        : 0;
+      
+      const orgTrend = (prevOrgCompleted > 0)
+        ? parseFloat(orgCompletionPercent) - parseFloat(prevOrgCompletionPercent)
+        : "---";
+
+      // Assessments
+      const allCycleAssessments = assessmentSnapshots.flatMap(snapshot =>
+        snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate(),
+          completedAt: doc.data().completedAt?.toDate()
+        }))
+      );
+
+      const directReportUids = myDirectReportsList.map(r => r.userId);
+
+      // Assessments I GIVE (to my direct reports)
+      const giveAssessments = allCycleAssessments
+        .filter(a => {
+          const giverUid = a.giver?.uid || a.assessorId;
+          const receiverUid = a.receiver?.uid || a.subjectId;
+          
+          // I'm the giver AND receiver is my direct report
+          return giverUid === user.uid && directReportUids.includes(receiverUid);
+        })
+        .map(a => {
+          const giverUid = a.giver?.uid || a.assessorId;
+          const receiverUid = a.receiver?.uid || a.subjectId;
+          const giverData = userMap[a.giver?.userId || a.assessorId] || Object.values(userMap).find(u => u.uid === giverUid);
+          const receiverData = userMap[a.receiver?.userId || a.subjectId] || Object.values(userMap).find(u => u.uid === receiverUid);
+          const isSelfAssessment = giverUid === receiverUid;
+          
+          return {
+            ...a,
+            assessorUid: giverUid,
+            assessorId: giverUid,
+            assessorName: a.giver?.displayName || a.assessorName || giverData?.displayName || 'Unknown',
+            assessorLayer: a.giver?.layer || giverData?.layer || 'ISF Supervisor',
+            assessorPillar: giverData?.pillar,
+            assessorSubPillar: giverData?.subPillar,
+            subjectUid: receiverUid,
+            subjectId: receiverUid,
+            subjectName: a.receiver?.displayName || a.subjectName || receiverData?.displayName || 'Unknown',
+            subjectEmail: receiverData?.email || '',
+            subjectLayer: a.receiver?.layer || receiverData?.layer || 'ISF',
+            subjectPillar: receiverData?.pillar,
+            subjectSubPillar: receiverData?.subPillar,
+            isSelfAssessment,
+            myRole: 'giver',
+            viewAccess: 'edit'
+          };
+        });
+
+      // Assessments I RECEIVE (from my ISL manager)
+      const receiveAssessments = allCycleAssessments
+        .filter(a => {
+          const receiverUid = a.receiver?.uid || a.subjectId;
+          const giverUid = a.giver?.uid || a.assessorId;
+          return receiverUid === user.uid && giverUid !== receiverUid;
+        })
+        .map(a => {
+          const giverUid = a.giver?.uid || a.assessorId;
+          const giverData = userMap[a.giver?.userId || a.assessorId] || Object.values(userMap).find(u => u.uid === giverUid);
+          
+          return {
+            ...a,
+            assessorUid: giverUid,
+            assessorName: a.giver?.displayName || a.assessorName || giverData?.displayName || 'Unknown',
+            assessorLayer: a.giver?.layer || giverData?.layer || 'Unknown',
+            isSelfAssessment: false,
+            myRole: 'receiver',
+            viewAccess: 'read-only'
+          };
+        });
+
+      // 360 Pairings
+      const all360Assessments = allCycleAssessments.filter(a => a.cycleType === '360');
+      
+      const selfAssessmentMap = new Map();
+      all360Assessments.forEach(assessment => {
+        const giverUid = assessment.giver?.uid || assessment.assessorId;
+        const receiverUid = assessment.receiver?.uid || assessment.subjectId;
+        if (giverUid === receiverUid && giverUid) {
+          selfAssessmentMap.set(giverUid, assessment.status);
+        }
+      });
+      
+      const pairingMap = new Map();
+      
+      all360Assessments.forEach(assessment => {
+        const rawPairId = assessment.pairId;
+        if (!rawPairId) return;
+        
+        const pairId = rawPairId.replace(/^360-pair-cycle-/, '');
+        
+        if (!pairingMap.has(pairId)) {
+          pairingMap.set(pairId, {
+            pairId,
+            cycleMonth: assessment.cycleMonth,
+            cycleYear: assessment.cycleYear,
+            cycleType: '360',
+            assessments: [],
+            assessmentIds: {},
+            personA: null,
+            personB: null,
+            managerId: null,
+            relationshipType: null
+          });
+        }
+        
+        const pairing = pairingMap.get(pairId);
+        pairing.assessments.push(assessment);
+        
+        const giverUid = assessment.giver?.uid || assessment.assessorId;
+        const receiverUid = assessment.receiver?.uid || assessment.subjectId;
+        
+        if (giverUid !== receiverUid) {
+          if (!pairing.personA) {
+            const giverData = userMap[assessment.giver?.userId || assessment.assessorId] || Object.values(userMap).find(u => u.uid === giverUid);
+            pairing.personA = {
+              uid: giverUid,
+              name: assessment.giver?.displayName || assessment.assessorName,
+              displayName: assessment.giver?.displayName || assessment.assessorName,
+              layer: assessment.giver?.layer || giverData?.layer
+            };
+          }
+          
+          if (!pairing.personB && receiverUid !== pairing.personA?.uid) {
+            const receiverData = userMap[assessment.receiver?.userId || assessment.subjectId] || Object.values(userMap).find(u => u.uid === receiverUid);
+            pairing.personB = {
+              uid: receiverUid,
+              name: assessment.receiver?.displayName || assessment.subjectName,
+              displayName: assessment.receiver?.displayName || assessment.subjectName,
+              layer: assessment.receiver?.layer || receiverData?.layer
+            };
+          }
+          
+          if (giverUid === pairing.personA?.uid && receiverUid === pairing.personB?.uid) {
+            pairing.assessmentIds.personA_to_B = assessment.id;
+          } else if (giverUid === pairing.personB?.uid && receiverUid === pairing.personA?.uid) {
+            pairing.assessmentIds.personB_to_A = assessment.id;
+          }
+        }
+      });
+
+      // Set relationship type for pairings
+      pairingMap.forEach((pairing) => {
+        const personALayer = pairing.personA?.layer;
+        const personBLayer = pairing.personB?.layer;
+        
+        if (personALayer === personBLayer && personALayer === 'ISF Supervisor') {
+          pairing.relationshipType = 'peer';
+        } else if (personALayer === personBLayer && personALayer === 'ISL') {
+          pairing.relationshipType = 'peer';
+        } else {
+          pairing.relationshipType = 'manager-report';
+          
+          if (personALayer === 'ISE' || (personALayer === 'ISL' && personBLayer === 'ISF Supervisor')) {
+            pairing.managerId = pairing.personA.uid;
+          } else if (personALayer === 'ISF Supervisor' && personBLayer === 'ISF') {
+            pairing.managerId = pairing.personA.uid;
+          } else {
+            pairing.managerId = pairing.personB.uid;
+            const temp = pairing.personA;
+            pairing.personA = pairing.personB;
+            pairing.personB = temp;
+            const tempId = pairing.assessmentIds.personA_to_B;
+            pairing.assessmentIds.personA_to_B = pairing.assessmentIds.personB_to_A;
+            pairing.assessmentIds.personB_to_A = tempId;
+          }
+        }
+      });
+
+      const my360Pairings = Array.from(pairingMap.values())
+        .filter(pairing => pairing.personA?.uid === user.uid || pairing.personB?.uid === user.uid)
+        .map(pairing => {
+          const personAUid = pairing.personA?.uid;
+          const personBUid = pairing.personB?.uid;
+          
+          const personA_self = selfAssessmentMap.get(personAUid) || 'pending';
+          const personB_self = selfAssessmentMap.get(personBUid) || 'pending';
+          
+          const assessmentStatuses = pairing.assessments.reduce((acc, a) => {
+            const giverUid = a.giver?.uid || a.assessorId;
+            const receiverUid = a.receiver?.uid || a.subjectId;
+            if (giverUid === receiverUid) return acc;
+            
+            if (giverUid === personAUid && receiverUid === personBUid) {
+              acc.personA_to_B = a.status;
+            } else if (giverUid === personBUid && receiverUid === personAUid) {
+              acc.personB_to_A = a.status;
+            }
+            return acc;
+          }, { personA_to_B: 'pending', personB_to_A: 'pending' });
+
+          const combinedStatuses = {
+            personA_self,
+            personA_to_B: assessmentStatuses.personA_to_B,
+            personB_self,
+            personB_to_A: assessmentStatuses.personB_to_A
+          };
+
+          const allComplete = Object.values(combinedStatuses).every(
+            status => status === 'completed' || status === 'calibrated'
+          );
+          
+          const partialComplete = Object.values(combinedStatuses).some(
+            status => status === 'completed' || status === 'calibrated'
+          );
+
+          return {
+            ...pairing,
+            status: combinedStatuses,
+            overallStatus: allComplete ? 'all_complete' : partialComplete ? 'partially_complete' : 'not_started',
+            personA: pairing.personA ? { ...pairing.personA, ...userMap[pairing.personA.uid] } : null,
+            personB: pairing.personB ? { ...pairing.personB, ...userMap[pairing.personB.uid] } : null
+          };
+        });
+
+      setAssessmentsIGive(giveAssessments);
+      setAssessmentsIReceive(receiveAssessments);
+      setPairings360(my360Pairings);
+      setMSHScoresIReceive(myMSH.sort((a, b) => b.publishedAt - a.publishedAt));
+
+      const cycleExpectedTotal = cycleInfo.cycleMonths.reduce((total, m) => {
+        const is360 = [3, 6, 9, 12].includes(m.month);
+        return total + (is360 ? 93 : 24);
+      }, 0);
+
+      setMetrics({
+        cycleNumber: cycleInfo.cycleNumber,
+        cycleType: cycleInfo.cycleType,
+        currentMonth: cycleInfo.currentMonth,
+        cycleMonths: cycleInfo.cycleMonths,
+        displayMonth,
+        displayYear,
+        isgsCompassScore,
+        isgsCompassCompleted,
+        isgsCompassTotal,
+        isgsCompassCumulativeAvg: calcAvg(isgsCompassCumulativeScores),
+        isgsCompassCumulativeCount: isgsCompassCumulativeScores.length,
+        isgsCompassTrend,
+        islScore,
+        islCompleted: uniqueISLCompleted,
+        islTotal: islUsers.length,
+        islCumulativeAvg: calcAvg(cumulativeISL.map(m => m.composite)),
+        islCumulativeCount: cumulativeISL.length,
+        islTrend,
+        allPillarsScore,
+        allPillarsCompleted: uniqueAllISFCompleted,
+        allPillarsTotal: isfUsers.length,
+        allPillarsCumulativeAvg: calcAvg(cumulativeAllISF.map(m => m.composite)),
+        allPillarsCumulativeCount: cumulativeAllISF.length,
+        allPillarsTrend,
+        myScore,
+        myCompleted: uniqueMyCompleted,
+        myTotal: 1,
+        myCumulativeAvg: calcAvg(cumulativeMy.map(m => m.composite)),
+        myCumulativeCount: cumulativeMy.length,
+        myTrend,
+        pillarBreakdown: pillarHealthScores,
+        orgScore: orgCompletionPercent,
+        orgCompleted,
+        orgTotal,
+        orgCumulativeAvg: cumulativeCompletionPercent,
+        orgCumulativeCount: cumulativeMSH.length,
+        orgTrend,
+        completedCount: allCycleAssessments.filter(a => a.status === 'completed' || a.status === 'calibrated').length,
+        totalCount: cycleExpectedTotal
+      });
+
+    } catch (error) {
+      console.error('❌ Error fetching ISF Supervisor hub data:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleViewAssessment = (assessmentId) => {
-    navigate(`/is-os/assessments/view/${assessmentId}`);
-  };
+  const handleStartAssessment = useCallback((assessment) => {
+    if (assessment.viewAccess === 'read-only') {
+      alert('You have view-only access to this assessment');
+      return;
+    }
+    navigate(`/is-os/assessments/${metrics.cycleType}/edit/${assessment.id}`);
+  }, [navigate, metrics.cycleType]);
 
-  // ==================== RENDER ====================
+  const handleViewAssessment = useCallback((assessmentId) => {
+    navigate(`/is-os/assessments/view/${assessmentId}`);
+  }, [navigate]);
+
+  const handleViewScore = useCallback((mshId) => {
+    navigate(`/is-os/msh/${mshId}`);
+  }, [navigate]);
+
+  const handleView360Pair = useCallback((pairing) => {
+    const selectedPair = pairing.selectedPair || 'A';
+    navigate(`/is-os/360-comparative/${pairing.pairId}?pair=${selectedPair}`);
+  }, [navigate]);
+
+  const handleMonthSelect = useCallback((month, year) => {
+    setSelectedMonth({ month, year });
+  }, []);
+
+  const tabs = useMemo(() => {
+    const baseTabs = [
+      { id: 'give', label: 'Give', count: assessmentsIGive.length, subtitle: 'Assessments for my team' },
+      { id: 'receive', label: 'Receive', count: assessmentsIReceive.length + mshScoresIReceive.length, subtitle: 'Assessments about me + My MSH scores' }
+    ];
+
+    const has360Pairings = pairings360.length > 0;
+    const is360Month = metrics.cycleType === '360';
+
+    if (has360Pairings || is360Month) {
+      baseTabs.push({ id: '360', label: 'MSH 360', count: pairings360.length, subtitle: '360° Pairings I\'m involved in' });
+    }
+
+    return baseTabs;
+  }, [assessmentsIGive.length, assessmentsIReceive.length, mshScoresIReceive.length, pairings360.length, metrics.cycleType]);
+
+  const selectedMonthName = useMemo(() => {
+    return selectedMonth 
+      ? new Date(selectedMonth.year, selectedMonth.month - 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+      : 'Current';
+  }, [selectedMonth]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading team data...</p>
+          <p className="text-gray-600">Loading supervisor dashboard...</p>
         </div>
       </div>
     );
@@ -413,354 +685,199 @@ function ISOSHubISFSupervisor() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <HubHeroBanner gradient="yellow" title="ISOS Hub" subtitle="ISF Supervisor View - Leader in Training" icon={Zap} />
+      <HubMetricsBar gradient="yellow" cycleNumber={metrics.cycleNumber} cycleType={metrics.cycleType} currentMonth={metrics.currentMonth} completedCount={metrics.completedCount} totalCount={metrics.totalCount} />
       
-      {/* ==================== HERO BANNER ==================== */}
-      <div className="bg-gradient-to-r from-yellow-500 via-amber-500 to-orange-500 text-white">
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="flex items-center gap-3 mb-6">
-            <Zap className="w-10 h-10" />
-            <div>
-              <h1 className="text-5xl font-bold">IS OS Hub</h1>
-              <p className="text-orange-100 text-lg">
-                Supervisor View - Team Leadership & Development
-              </p>
-            </div>
-          </div>
-          
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              
-              <div>
-                <div className="text-orange-200 text-sm mb-1">Assessment Cycle</div>
-                <div className="text-white text-lg font-semibold">
-                  Cycle {metrics.cycleInYear} of 4
-                </div>
-                <div className="text-orange-200 text-sm mt-1">
-                  Type: {metrics.assessmentType}
-                </div>
-              </div>
-              
-              <div className="text-center">
-                <div className="text-orange-200 text-sm mb-1">Current Open Month</div>
-                <div className="text-white text-3xl font-bold flex items-center justify-center gap-2">
-                  <Calendar className="w-8 h-8" />
-                  {metrics.currentMonthName}
-                </div>
-                <div className="text-orange-200 text-sm mt-3">
-                  {metrics.completedAssessments}/{metrics.totalAssessmentsNeeded} assessments completed
+      {metrics.cycleMonths && (
+        <div className="max-w-7xl mx-auto px-6 -mt-4 mb-4">
+          <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Calendar className="w-4 h-4 text-yellow-600" />
+                <span className="text-sm font-semibold text-yellow-900">
+                  Viewing: {selectedMonthName}
+                </span>
+                <div className="h-4 w-px bg-yellow-300"></div>
+                <div className="flex gap-2">
+                  {metrics.cycleMonths.map((m, i) => {
+                    const monthName = new Date(m.year, m.month - 1).toLocaleDateString('en-US', { month: 'short' });
+                    const isSelected = selectedMonth ? (selectedMonth.month === m.month && selectedMonth.year === m.year) : (m.month === new Date().getMonth() + 1 && m.year === new Date().getFullYear());
+                    
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => handleMonthSelect(m.month, m.year)}
+                        className={`px-3 py-1.5 rounded text-xs font-semibold transition-all ${
+                          isSelected
+                            ? 'bg-gradient-to-r from-yellow-600 to-amber-600 text-white shadow-md'
+                            : 'bg-yellow-100 text-yellow-700 border border-yellow-300 hover:bg-yellow-200 hover:border-yellow-400'
+                        }`}
+                      >
+                        {monthName} {m.year}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-              
-              <div className="text-right">
-                <div className="text-orange-200 text-sm mb-1">Assessment Progress</div>
-                <div className="text-white text-lg font-semibold">
-                  {metrics.completedAssessments}/{metrics.totalAssessmentsNeeded} completed ({getPercentage(metrics.completedAssessments, metrics.totalAssessmentsNeeded)})
-                </div>
-                <div className={`text-sm mt-2 flex items-center justify-end gap-1 ${metrics.isPastDeadline ? 'text-yellow-300' : 'text-orange-200'}`}>
-                  {metrics.isPastDeadline && <AlertTriangle className="w-4 h-4" />}
-                  <span>
-                    {metrics.isPastDeadline ? 'Past Deadline: ' : 'Deadline: '}
-                    {metrics.deadline?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </span>
-                </div>
-                <div className="text-orange-200 text-xs mt-1">
-                  (5 business days from month start)
-                </div>
-              </div>
-              
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-6 py-8">
-        
-        {/* ==================== TEAM METRICS ==================== */}
+        {/* Row 1: Organizational Health Metrics */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <KPIStatCard 
+            title="ISGS Compass" 
+            value={metrics.isgsCompassScore || "—"} 
+            secondaryValue={`${metrics.isgsCompassCompleted} / ${metrics.isgsCompassTotal}`} 
+            maxValue={12} 
+            icon={Compass} 
+            gradient="blue" 
+            trend={metrics.isgsCompassTrend} 
+            trendLabel="vs last month" 
+            metadata={[
+              { label: "Cumulative Avg", value: metrics.isgsCompassCumulativeAvg || "—" }, 
+              { label: "Total MSH", value: metrics.isgsCompassCumulativeCount }
+            ]} 
+          />
+          <KPIStatCard 
+            title="ISL Leadership" 
+            value={metrics.islScore || "—"} 
+            secondaryValue={`${metrics.islCompleted} / ${metrics.islTotal}`} 
+            maxValue={12} 
+            icon={Award} 
+            gradient="purple" 
+            trend={metrics.islTrend} 
+            trendLabel="vs last month" 
+            metadata={[
+              { label: "Cumulative Avg", value: metrics.islCumulativeAvg || "—" }, 
+              { label: "Total MSH", value: metrics.islCumulativeCount }
+            ]} 
+          />
+          <KPIStatCard 
+            title="All Pillars Aggregate" 
+            value={metrics.allPillarsScore || "—"} 
+            secondaryValue={`${metrics.allPillarsCompleted} / ${metrics.allPillarsTotal}`} 
+            maxValue={12} 
+            icon={TrendingUp} 
+            gradient="emerald" 
+            trend={metrics.allPillarsTrend} 
+            trendLabel="vs last month" 
+            metadata={[
+              { label: "Cumulative Avg", value: metrics.allPillarsCumulativeAvg || "—" }, 
+              { label: "Total MSH", value: metrics.allPillarsCumulativeCount }
+            ]} 
+          />
+        </div>
+
+        {/* Row 2: Individual Pillar Health */}
         <div className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-700 mb-4">Team Metrics</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            
-            {/* My Health Card */}
-            <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <h3 className="text-sm font-medium text-gray-600 mb-1">My Health</h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-5xl font-bold text-gray-900">
-                      {metrics.myComposite || '—'}
-                    </span>
-                    <div className="text-sm text-gray-500 mt-2">
-                      0-12 scale
-                    </div>
-                  </div>
-                </div>
-                <User className="w-8 h-8 text-purple-600" />
-              </div>
-              
-              <div className="mt-4 pt-3 border-t border-purple-200 space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">Cumulative Zone</span>
-                  <span className="font-semibold text-gray-900">
-                    {metrics.myComposite ? getCompositeZoneName(metrics.myComposite) : 'Not Assessed'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">9-Box Position</span>
-                  <span className="font-semibold text-gray-900">
-                    {metrics.myLastAssessment?.nineBoxPosition || 'Not Assessed'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">Last Review</span>
-                  <span className="font-semibold text-gray-900">
-                    {metrics.myLastAssessed || 'Never'}
-                  </span>
-                </div>
-              </div>
-            </Card>
-
-            {/* Team Health Card */}
-            <Card className="bg-gradient-to-br from-yellow-50 to-amber-50 border-2 border-yellow-200">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <h3 className="text-sm font-medium text-gray-600 mb-1">Team Health</h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-5xl font-bold text-gray-900">
-                      {metrics.teamAvgComposite}
-                    </span>
-                    <div className="text-sm text-gray-500 mt-2">
-                      0-12 scale
-                    </div>
-                  </div>
-                </div>
-                <Users className="w-8 h-8 text-yellow-600" />
-              </div>
-              
-              <div className="mt-4 pt-3 border-t border-yellow-200">
-                <div className="space-y-1 text-xs mb-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Below Baseline (0-4):</span>
-                    <span className="font-semibold text-gray-900">
-                      {metrics.teamZones.below} ({getPercentage(metrics.teamZones.below, metrics.teamSize)})
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Baseline (5-6):</span>
-                    <span className="font-semibold text-gray-900">
-                      {metrics.teamZones.baseline} ({getPercentage(metrics.teamZones.baseline, metrics.teamSize)})
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Above Baseline (7-10):</span>
-                    <span className="font-semibold text-gray-900">
-                      {metrics.teamZones.above} ({getPercentage(metrics.teamZones.above, metrics.teamSize)})
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Exceptional (11-12):</span>
-                    <span className="font-semibold text-gray-900">
-                      {metrics.teamZones.exceptional} ({getPercentage(metrics.teamZones.exceptional, metrics.teamSize)})
-                    </span>
-                  </div>
-                </div>
-                
-                <div className="pt-3 border-t border-yellow-200 space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">Team Size</span>
-                    <span className="font-semibold text-gray-900">{metrics.teamSize}</span>
-                  </div>
-                </div>
-              </div>
-            </Card>
-
-            {/* Monthly Progress Card */}
-            <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-2 border-blue-200">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <h3 className="text-sm font-medium text-gray-600 mb-1">Monthly Progress</h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-5xl font-bold text-gray-900">
-                      {metrics.assessedThisMonth}
-                    </span>
-                    <div className="text-sm text-gray-500 mt-2">
-                      / {metrics.totalAssessmentsNeeded}
-                    </div>
-                  </div>
-                </div>
-                <CheckCircle className="w-8 h-8 text-blue-600" />
-              </div>
-              <div className="mt-4 pt-3 border-t border-blue-200 space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">Completion Rate</span>
-                  <span className="font-semibold text-gray-900">
-                    {getPercentage(metrics.assessedThisMonth, metrics.totalAssessmentsNeeded)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">Alignment Rate</span>
-                  <span className="font-semibold text-gray-900">{metrics.alignmentRate}%</span>
-                </div>
-              </div>
-            </Card>
-
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Building2 className="w-5 h-5 text-yellow-600" />
+            Individual Pillar Health
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            {metrics.pillarBreakdown.map(p => (
+              <KPIStatCard 
+                key={p.id} 
+                title={p.name} 
+                value={p.score || "—"} 
+                secondaryValue={`${p.completed} / ${p.total}`} 
+                maxValue={12} 
+                icon={Building2} 
+                gradient="indigo" 
+                trend={p.trend} 
+                trendLabel="vs last month" 
+                metadata={[
+                  { label: "Cumulative Avg", value: p.cumulativeAvg || "—" }, 
+                  { label: "Total MSH", value: p.cumulativeCount }
+                ]} 
+              />
+            ))}
           </div>
         </div>
 
-        {/* ==================== NEW: TABBED ASSESSMENT VIEWS ==================== */}
+        {/* Row 3: Org-Wide and Personal Metrics */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <KPIStatCard 
+            title="Org-Wide Completion" 
+            value={`${metrics.orgScore}%`} 
+            secondaryValue={`${metrics.orgCompleted} / ${metrics.orgTotal}`} 
+            maxValue={null} 
+            icon={BarChart3} 
+            gradient="cyan" 
+            trend={metrics.orgTrend} 
+            trendLabel="% vs last month" 
+            metadata={[
+              { label: "Cumulative Avg", value: `${metrics.orgCumulativeAvg}%` }, 
+              { label: "Total MSH", value: metrics.orgCumulativeCount }
+            ]} 
+          />
+          <KPIStatCard 
+            title="My Compass" 
+            value={metrics.myScore || "—"} 
+            secondaryValue={`${metrics.myCompleted} / ${metrics.myTotal}`} 
+            maxValue={12} 
+            icon={User} 
+            gradient="orange" 
+            trend={metrics.myTrend} 
+            trendLabel="vs last month" 
+            metadata={[
+              { label: "Cumulative Avg", value: metrics.myCumulativeAvg || "—" }, 
+              { label: "Total MSH", value: metrics.myCumulativeCount }
+            ]} 
+          />
+        </div>
+
+        {/* Tabs and Assessment Grid */}
         <div className="mb-8">
-          {/* Tab Navigation */}
-          <div className="border-b border-gray-200 mb-6">
-            <nav className="flex gap-8">
-              <button
-                onClick={() => setActiveTab('team')}
-                className={`pb-4 px-1 font-medium text-sm border-b-2 transition-colors ${
-                  activeTab === 'team'
-                    ? 'border-yellow-600 text-yellow-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                My Team
-              </button>
-              <button
-                onClick={() => setActiveTab('myassessments')}
-                className={`pb-4 px-1 font-medium text-sm border-b-2 transition-colors ${
-                  activeTab === 'myassessments'
-                    ? 'border-yellow-600 text-yellow-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                My Assessments
-              </button>
-            </nav>
-          </div>
-
-          {/* Tab Content */}
-          {activeTab === 'team' && (
-            <AssessmentCycleGrid
-              members={gridMembers}
-              assessmentType={metrics.assessmentType}
-              currentMonthName={metrics.currentMonthName}
-              onStartAssessments={handleStartAssessments}
-              onViewAssessment={handleViewAssessment}
-              showStartButton={true}
-              emptyStateMessage="No team members found"
-              showPillarColumn={false}
-              showSubPillarColumn={true}
-              showTeamSizeColumn={false}
-              showAssessorColumn={false}
-              showHRPColumn={true}
+          <HubTabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+          
+          {activeTab === 'give' && (
+            <AssessmentOrchestrator 
+              assessments={assessmentsIGive} 
+              onStartAssessment={handleStartAssessment} 
+              onViewAssessment={handleViewAssessment} 
+              viewMode="give" 
+              currentUserId={user.uid} 
+              userRole="ISF Supervisor" 
+              emptyStateMessage="No team assessments to complete this cycle" 
             />
           )}
+          
+          {activeTab === 'receive' && (
+            <div className="space-y-8">
+              {assessmentsIReceive.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Assessments About Me</h3>
+                  <AssessmentOrchestrator 
+                    assessments={assessmentsIReceive} 
+                    onStartAssessment={handleStartAssessment} 
+                    onViewAssessment={handleViewAssessment} 
+                    viewMode="receive" 
+                    currentUserId={user.uid} 
+                  />
+                </div>
+              )}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">My Published MSH Scores</h3>
+                <PublishedMSHScoresGrid mshScores={mshScoresIReceive} onViewScore={handleViewScore} />
+              </div>
+            </div>
+          )}
 
-          {activeTab === 'myassessments' && (
-            <AssessmentCycleGrid
-              members={(() => {
-                // Transform assessments where current user is the subject
-                const myAssessments = allAssessments.filter(a => a.employeeId === user.uid);
-                console.log('ISFsupervisor - My Assessments filtered:', myAssessments.length, 'User UID:', user.uid);
-                
-                return myAssessments.map(assessment => ({
-                  id: assessment.id,
-                  name: assessment.isSelfAssessment ? 'Self-Assessment' : 'Manager Assessment',
-                  email: user.email || '',
-                  layer: 'ISF',
-                  pillarRole: 'Supervisor',
-                  subPillar: assessment.subPillar || 'N/A',
-                  pillarId: assessment.pillarId,
-                  assessorName: assessment.managerName,
-                  isDirectReport: true,
-                  currentAssessment: {
-                    id: assessment.id,
-                    status: assessment.status,
-                    composite: assessment.compositeScore,
-                    alignmentStatus: assessment.status === 'not-aligned' ? 'not-aligned' : 'aligned',
-                    nineBoxPosition: assessment.nineBoxPosition,
-                    mshId: assessment.mshId,
-                    hrpRequested: assessment.hrpRequested,
-                    hrpReviewedAt: assessment.hrpReviewedAt
-                  },
-                  teamSize: 0,
-                  isSupervisor: true
-                }));
-              })()}
-              assessmentType={metrics.assessmentType}
-              currentMonthName={metrics.currentMonthName}
-              onStartAssessments={handleStartAssessments}
-              onViewAssessment={handleViewAssessment}
-              showStartButton={true}
-              emptyStateMessage="No assessments assigned to you yet"
-              showPillarColumn={false}
-              showSubPillarColumn={false}
-              showTeamSizeColumn={false}
-              showAssessorColumn={true}
-              showHRPColumn={true}
+          {activeTab === '360' && (
+            <AssessmentOrchestrator 
+              pairings={pairings360} 
+              onView360Pair={handleView360Pair} 
+              viewMode="360-pairings" 
+              currentUserId={user.uid} 
+              userRole="ISF Supervisor" 
+              emptyStateMessage="No 360° pairings involving you this cycle" 
             />
           )}
         </div>
-
-        {/* ==================== QUICK ACTIONS ==================== */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="bg-gradient-to-br from-yellow-50 to-amber-50">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 mb-2">Team Dashboard</h3>
-                <p className="text-sm text-gray-600">
-                  Health trends and team insights
-                </p>
-              </div>
-              <Users className="w-8 h-8 text-yellow-600" />
-            </div>
-            <Button 
-              variant="secondary" 
-              className="w-full mt-4"
-              onClick={() => alert('Team Dashboard coming soon!')}
-            >
-              View Dashboard
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </Button>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-blue-50 to-cyan-50">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 mb-2">Team Analytics</h3>
-                <p className="text-sm text-gray-600">
-                  Historical trends and health patterns
-                </p>
-              </div>
-              <TrendingUp className="w-8 h-8 text-blue-600" />
-            </div>
-            <Button 
-              variant="secondary" 
-              className="w-full mt-4"
-              onClick={() => alert('Team Analytics coming soon!')}
-            >
-              View Analytics
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </Button>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-purple-50 to-pink-50">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 mb-2">Development Plans</h3>
-                <p className="text-sm text-gray-600">
-                  Track individual growth and career paths
-                </p>
-              </div>
-              <Target className="w-8 h-8 text-purple-600" />
-            </div>
-            <Button 
-              variant="secondary" 
-              className="w-full mt-4"
-              onClick={() => alert('Development Plans coming soon!')}
-            >
-              View Plans
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </Button>
-          </Card>
-        </div>
-
       </div>
     </div>
   );

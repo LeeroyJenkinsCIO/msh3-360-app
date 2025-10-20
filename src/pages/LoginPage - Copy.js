@@ -1,7 +1,6 @@
-// 📁 SAVE TO: src/pages/LoginPage.js
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword, setPersistence, browserSessionPersistence, browserLocalPersistence } from 'firebase/auth';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -23,15 +22,6 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // 🔒 SECURITY: Set persistence based on environment
-      // Production: Session-only (clears on browser close)
-      // Development: Local storage (persists for convenience)
-      const persistenceType = process.env.NODE_ENV === 'production' 
-        ? browserSessionPersistence 
-        : browserLocalPersistence;
-      
-      await setPersistence(auth, persistenceType);
-      
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
@@ -82,9 +72,6 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // Dev mode uses local persistence
-      await setPersistence(auth, browserLocalPersistence);
-      
       const userCredential = await signInWithEmailAndPassword(auth, 'admin@sierranevada.com', 'password');
       const user = userCredential.user;
 
@@ -214,13 +201,6 @@ export default function LoginPage() {
                 All users: <span className="font-mono">password</span>
               </p>
             </Card>
-          )}
-
-          {/* Security Notice - Show in production */}
-          {process.env.NODE_ENV === 'production' && (
-            <div className="text-center text-xs text-gray-500">
-              <p>🔒 Secure session - You'll be logged out when you close your browser</p>
-            </div>
           )}
 
         </div>

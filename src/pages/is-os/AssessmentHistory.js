@@ -1,12 +1,14 @@
 // 📁 SAVE TO: src/pages/is-os/AssessmentHistory.jsx
-// UPDATED - Now uses getHRPBadgeConfig for consistent "Review Complete" badges
+// ✅ FIXED: Self-assessments show "Supporting Data" instead of MSH ID
+// ✅ FIXED: Filter to hide/show self-assessments
+// ✅ FIXED: Better MSH ID display logic
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { 
-  ArrowLeft, Eye, CheckCircle, AlertCircle
+  ArrowLeft, Eye, CheckCircle, AlertCircle, User, Shield
 } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -24,6 +26,7 @@ function AssessmentHistory() {
   const [filterType, setFilterType] = useState('all');
   const [assesseeFilter, setAssesseeFilter] = useState('all');
   const [assessorFilter, setAssessorFilter] = useState('all');
+  const [showSelfAssessments, setShowSelfAssessments] = useState(false); // ✅ NEW: Toggle for self-assessments
 
   useEffect(() => {
     const fetchAssessments = async () => {
@@ -62,7 +65,9 @@ function AssessmentHistory() {
             subjectPillar: subjectData.pillar || data.subjectPillar || 'Unassigned',
             subjectSubPillar: subjectData.subPillar || data.subjectSubPillar || '',
             subjectLayer: subjectData.layer || data.subjectLayer || 'Unknown',
-            assessorName: data.assessorName || assessorData.displayName || 'Unknown'
+            assessorName: data.assessorName || assessorData.displayName || 'Unknown',
+            // ✅ NEW: Flag self-assessments clearly
+            isSelf: data.assessmentType === 'self' || data.isSelfAssessment || data.assessorId === data.subjectId
           });
         });
         
@@ -78,7 +83,9 @@ function AssessmentHistory() {
   }, []);
 
   const handleViewAssessment = (assessment) => {
-    if (assessment.hrpReviewedAt || (user?.role === 'hrp' && assessment.hrpRequested)) {
+    if (assessment.isSelf) {
+      navigate(`/is-os/self-assessment/${assessment.id}`);
+    } else if (assessment.hrpReviewedAt || (user?.role === 'hrp' && assessment.hrpRequested)) {
       navigate(`/is-os/assessments/hrp-review/${assessment.id}`);
     } else {
       navigate(`/is-os/assessments/view/${assessment.id}`);
@@ -86,14 +93,18 @@ function AssessmentHistory() {
   };
 
   const filterCounts = useMemo(() => {
+    // ✅ FIXED: Don't count self-assessments unless showSelfAssessments is true
+    const filteredByType = showSelfAssessments ? assessments : assessments.filter(a => !a.isSelf);
+    
     const counts = {
-      all: assessments.length,
+      all: filteredByType.length,
       aligned: 0,
       notAligned: 0,
-      hrpRequests: 0
+      hrpRequests: 0,
+      selfAssessments: assessments.filter(a => a.isSelf).length // Count of self-assessments
     };
 
-    assessments.forEach(a => {
+    filteredByType.forEach(a => {
       const isAligned = a.alignmentStatus === 'aligned' || a.status === 'completed';
       const isNotAligned = a.alignmentStatus === 'not-aligned' || 
                            a.status === 'not-aligned' ||
@@ -106,20 +117,23 @@ function AssessmentHistory() {
     });
 
     return counts;
-  }, [assessments]);
+  }, [assessments, showSelfAssessments]);
 
   const uniqueAssessees = useMemo(() => {
-    const names = [...new Set(assessments.map(a => a.subjectName))].sort();
+    const filtered = showSelfAssessments ? assessments : assessments.filter(a => !a.isSelf);
+    const names = [...new Set(filtered.map(a => a.subjectName))].sort();
     return names;
-  }, [assessments]);
+  }, [assessments, showSelfAssessments]);
 
   const uniqueAssessors = useMemo(() => {
-    const names = [...new Set(assessments.map(a => a.assessorName))].sort();
+    const filtered = showSelfAssessments ? assessments : assessments.filter(a => !a.isSelf);
+    const names = [...new Set(filtered.map(a => a.assessorName))].sort();
     return names;
-  }, [assessments]);
+  }, [assessments, showSelfAssessments]);
 
   const getFilteredAssessments = () => {
-    let filtered = assessments;
+    // ✅ FIXED: Filter out self-assessments unless explicitly shown
+    let filtered = showSelfAssessments ? assessments : assessments.filter(a => !a.isSelf);
 
     if (filterType === 'aligned') {
       filtered = filtered.filter(a => a.alignmentStatus === 'aligned' || a.status === 'completed');
@@ -239,6 +253,20 @@ function AssessmentHistory() {
                   HRP Requests ({filterCounts.hrpRequests})
                 </button>
               </div>
+              
+              {/* ✅ NEW: Toggle for Self-Assessments */}
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={showSelfAssessments}
+                    onChange={(e) => setShowSelfAssessments(e.target.checked)}
+                    className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                  />
+                  <User className="w-4 h-4 text-purple-600" />
+                  <span className="font-medium">Show Self-Assessments ({filterCounts.selfAssessments})</span>
+                </label>
+              </div>
             </div>
 
             <div className="flex items-center gap-4">
@@ -279,7 +307,7 @@ function AssessmentHistory() {
 
         <div className="mb-4">
           <p className="text-sm text-gray-600">
-            Showing {filteredAssessments.length} of {assessments.length} assessments
+            Showing {filteredAssessments.length} of {showSelfAssessments ? assessments.length : assessments.filter(a => !a.isSelf).length} assessments
             {(filterType !== 'all' || assesseeFilter !== 'all' || assessorFilter !== 'all') && (
               <span className="text-blue-600 ml-1">(filtered)</span>
             )}
@@ -305,10 +333,10 @@ function AssessmentHistory() {
                     <th className="sticky left-0 z-20 bg-gray-50 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200" style={{minWidth: '100px'}}>
                       Action
                     </th>
-                    <th className="sticky left-[100px] z-20 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200" style={{minWidth: '100px'}}>
+                    <th className="sticky left-[100px] z-20 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200" style={{minWidth: '150px'}}>
                       MSH ID
                     </th>
-                    <th className="sticky left-[200px] z-20 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r-4 border-blue-400" style={{minWidth: '200px'}}>
+                    <th className="sticky left-[250px] z-20 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r-4 border-blue-400" style={{minWidth: '200px'}}>
                       Assessee
                     </th>
 
@@ -354,9 +382,12 @@ function AssessmentHistory() {
                     const HRPBadgeIcon = hrpBadgeConfig?.icon;
                     
                     return (
-                      <tr key={assessment.id} className="hover:bg-gray-50 transition-colors">
+                      <tr 
+                        key={assessment.id} 
+                        className={`hover:bg-gray-50 transition-colors ${assessment.isSelf ? 'bg-purple-50/30' : ''}`}
+                      >
                         
-                        <td className="sticky left-0 z-10 bg-white px-4 py-4 text-center border-r border-gray-200 group-hover:bg-gray-50" style={{minWidth: '100px'}}>
+                        <td className="sticky left-0 z-10 bg-white px-4 py-4 text-center border-r border-gray-200 hover:bg-gray-50" style={{minWidth: '100px'}}>
                           <Button
                             variant="secondary"
                             size="sm"
@@ -367,13 +398,23 @@ function AssessmentHistory() {
                           </Button>
                         </td>
 
-                        <td className="sticky left-[100px] z-10 bg-white px-4 py-4 whitespace-nowrap border-r border-gray-200 group-hover:bg-gray-50" style={{minWidth: '100px'}}>
-                          <Badge variant="primary" className="text-xs font-mono">
-                            {assessment.mshId || 'N/A'}
-                          </Badge>
+                        {/* ✅ FIXED: MSH ID Column with Self-Assessment Logic */}
+                        <td className={`sticky left-[100px] z-10 px-4 py-4 whitespace-nowrap border-r border-gray-200 hover:bg-gray-50 ${assessment.isSelf ? 'bg-purple-50/30' : 'bg-white'}`} style={{minWidth: '150px'}}>
+                          {assessment.isSelf ? (
+                            <div className="flex items-center gap-1 text-xs text-purple-600">
+                              <Shield className="w-3 h-3" />
+                              <span className="font-medium">Supporting Data</span>
+                            </div>
+                          ) : assessment.impact?.mshId ? (
+                            <span className="text-sm font-mono font-semibold text-indigo-600">
+                              {assessment.impact.mshId}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-sm">—</span>
+                          )}
                         </td>
 
-                        <td className="sticky left-[200px] z-10 bg-white px-4 py-4 whitespace-nowrap border-r-4 border-blue-400 group-hover:bg-gray-50" style={{minWidth: '200px'}}>
+                        <td className={`sticky left-[250px] z-10 px-4 py-4 whitespace-nowrap border-r-4 border-blue-400 hover:bg-gray-50 ${assessment.isSelf ? 'bg-purple-50/30' : 'bg-white'}`} style={{minWidth: '200px'}}>
                           <div className="text-sm font-medium text-gray-900">{assessment.subjectName}</div>
                           <div className="text-xs text-gray-500">{assessment.subjectLayer}</div>
                         </td>
@@ -383,9 +424,16 @@ function AssessmentHistory() {
                         </td>
 
                         <td className="px-4 py-4 whitespace-nowrap">
-                          <Badge variant="secondary" className="text-xs">
-                            {assessment.assessmentType === '360' || assessment.type === '360' ? '360' : '1x1'}
-                          </Badge>
+                          {assessment.isSelf ? (
+                            <Badge variant="secondary" className="bg-purple-100 text-purple-700 border-purple-300 text-xs">
+                              <User className="w-3 h-3 mr-1" />
+                              SELF
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-xs">
+                              {assessment.cycleType === '360' ? '360°' : '1x1'}
+                            </Badge>
+                          )}
                         </td>
 
                         <td className="px-4 py-4 text-center">

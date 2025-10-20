@@ -1,7 +1,6 @@
 // 📁 SAVE TO: src/utils/CreateAssessmentCycles.js
-// 🎪 THE RINGLEADER - COMPLETE PRODUCTION FILE
-// Assessment Cycle Orchestration System with Admin Functions
-// ✅ FIXED: 25 Self-Assessments (MSH³ Participants Only)
+// 🎪 THE RINGLEADER - WITH 360 PAIR LINKING
+// Complete Assessment Cycle Orchestration System with 360 Pair Connections
 
 import { db } from '../firebase';
 import { 
@@ -26,7 +25,7 @@ import {
 // ═══════════════════════════════════════════════════════════════
 
 export const createNextCycle = async (startYear = null, startMonth = null) => {
-  console.log('🎪 Ringleader starting...');
+  console.log('🎪 Ringleader starting with 360 pair linking...');
   
   try {
     const lastCycle = await getLastCycle();
@@ -80,7 +79,7 @@ export const createNextCycle = async (startYear = null, startMonth = null) => {
       timestamp: new Date().toISOString()
     };
     
-    console.log('🎊 Ringleader complete!', summary);
+    console.log('🎊 Ringleader complete with 360 pair linking!', summary);
     return summary;
     
   } catch (error) {
@@ -185,7 +184,6 @@ const getAllManagers = async () => {
       userId: userData.userId,
       displayName: userData.displayName || userData.name || 'Unknown',
       role: userData.layer,
-      layer: userData.layer,
       directReportIds: userData.directReportIds || []
     });
   });
@@ -198,7 +196,6 @@ const getAllManagers = async () => {
         userId: userData.userId,
         displayName: userData.displayName || userData.name || 'Unknown',
         role: 'ISF Supervisor',
-        layer: userData.layer || 'ISF',
         directReportIds: userData.directReportIds || []
       });
     }
@@ -226,9 +223,7 @@ const getDirectReports = async (managerUid, directReportIds) => {
         uid: userDoc.id,
         userId: userId,
         displayName: userData.displayName || userData.name || 'Unknown',
-        layer: userData.layer || 'ISF',
-        role: userData.layer || 'ISF',
-        directReportIds: userData.directReportIds || []
+        layer: userData.layer || 'ISF'
       });
     }
   }
@@ -237,7 +232,7 @@ const getDirectReports = async (managerUid, directReportIds) => {
 };
 
 // ═══════════════════════════════════════════════════════════════
-// 📝 ASSESSMENT CREATION - COMPLETE WITH ALL LEVELS
+// 📝 ASSESSMENT CREATION WITH 360 PAIR LINKING
 // ═══════════════════════════════════════════════════════════════
 
 const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMonth) => {
@@ -257,38 +252,24 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
     const is360Month = [3, 6, 9, 12].includes(monthNum);
     const cycleType = is360Month ? '360' : '1x1';
     
-    console.log(`📝 Creating assessments for ${getMonthName(monthNum)} ${yearNum} (${cycleType})...`);
+    console.log(`📝 Creating assessments with 360 linking for ${getMonthName(monthNum)} ${yearNum} (${cycleType})...`);
     
     let batch = writeBatch(db);
     let batchCount = 0;
-    const maxBatchSize = 450;
+    const maxBatchSize = 450; // Conservative limit for batch + updates
     
     if (is360Month) {
       // ═══════════════════════════════════════════════════════════
-      // 360 MONTH: Self + Bidirectional + P2P
+      // 360 MONTH: Self + Bidirectional + P2P WITH PAIR LINKING
       // ═══════════════════════════════════════════════════════════
       
-      const selfAssessmentMap = new Map();
-      const allParticipants = new Set();
+      // 🗂️ Track self-assessment IDs for linking
+      const selfAssessmentMap = new Map(); // userId → assessmentId
       
-      // Collect MSH³ participants ONLY (no sub-reports)
-      // ISE, ISL, ISF Supervisors + their DIRECT reports only
+      // STEP 1: Self-assessments for managers
       for (const manager of managers) {
-        allParticipants.add(manager); // Add the manager (ISE/ISL/ISF Supervisor)
-        
-        const directReports = await getDirectReports(manager.uid, manager.directReportIds);
-        for (const report of directReports) {
-          allParticipants.add(report); // Add their direct reports (ISL/ISF)
-          // STOP HERE - no recursion into sub-reports
-        }
-      }
-      
-      console.log(`📊 Total 360 participants (MSH³): ${allParticipants.size} (Expected: 25)`);
-      
-      // STEP 1: Self-assessments for ALL MSH³ participants
-      for (const participant of allParticipants) {
-        const selfAssessmentId = `${participant.userId}-self-${cycleId}`;
-        selfAssessmentMap.set(participant.userId, selfAssessmentId);
+        const selfAssessmentId = `${manager.userId}-self-${cycleId}`;
+        selfAssessmentMap.set(manager.userId, selfAssessmentId);
         
         const selfAssessmentRef = doc(db, 'assessments', selfAssessmentId);
         
@@ -301,37 +282,38 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
           assessmentType: 'self',
           
           giver: {
-            uid: participant.uid,
-            userId: participant.userId,
-            displayName: participant.displayName,
+            uid: manager.uid,
+            userId: manager.userId,
+            displayName: manager.displayName,
             role: 'assessor',
-            layer: participant.layer || participant.role,
+            layer: manager.role,
             viewTab: 'give'
           },
           
           receiver: {
-            uid: participant.uid,
-            userId: participant.userId,
-            displayName: participant.displayName,
+            uid: manager.uid,
+            userId: manager.userId,
+            displayName: manager.displayName,
             role: 'subject',
-            layer: participant.layer || participant.role,
+            layer: manager.role,
             viewTab: 'receive'
           },
           
           impact: {
-            affectsMSH: participant.uid,
+            affectsMSH: manager.uid,
             mshCycle: `${yearNum}-${String(monthNum).padStart(2, '0')}`,
             mshId: null,
             weight: 1.0,
             isSelfAssessment: true
           },
           
-          '360Pairs': [],
+          // ✨ 360 PAIR LINKING
+          '360Pairs': [],  // Will be populated via arrayUnion
           
-          assessorId: participant.uid,
-          assessorName: participant.displayName,
-          subjectId: participant.uid,
-          subjectName: participant.displayName,
+          assessorId: manager.uid,
+          assessorName: manager.displayName,
+          subjectId: manager.uid,
+          subjectName: manager.displayName,
           
           status: 'pending',
           composite: null,
@@ -352,23 +334,98 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
         }
       }
       
+      // STEP 2: Self-assessments for direct reports
+      for (const manager of managers) {
+        const directReports = await getDirectReports(manager.uid, manager.directReportIds);
+        
+        for (const report of directReports) {
+          const selfAssessmentId = `${report.userId}-self-${cycleId}`;
+          selfAssessmentMap.set(report.userId, selfAssessmentId);
+          
+          const selfAssessmentRef = doc(db, 'assessments', selfAssessmentId);
+          
+          batch.set(selfAssessmentRef, {
+            cycleId,
+            cycleName: `${getMonthName(monthNum)} ${yearNum}`,
+            cycleMonth: monthNum,
+            cycleYear: yearNum,
+            cycleType: '360',
+            assessmentType: 'self',
+            
+            giver: {
+              uid: report.uid,
+              userId: report.userId,
+              displayName: report.displayName,
+              role: 'assessor',
+              layer: report.layer,
+              viewTab: 'give'
+            },
+            
+            receiver: {
+              uid: report.uid,
+              userId: report.userId,
+              displayName: report.displayName,
+              role: 'subject',
+              layer: report.layer,
+              viewTab: 'receive'
+            },
+            
+            impact: {
+              affectsMSH: report.uid,
+              mshCycle: `${yearNum}-${String(monthNum).padStart(2, '0')}`,
+              mshId: null,
+              weight: 1.0,
+              isSelfAssessment: true
+            },
+            
+            // ✨ 360 PAIR LINKING
+            '360Pairs': [],
+            
+            assessorId: report.uid,
+            assessorName: report.displayName,
+            subjectId: report.uid,
+            subjectName: report.displayName,
+            
+            status: 'pending',
+            composite: null,
+            scores: {},
+            notes: {},
+            
+            createdAt: serverTimestamp(),
+            dueDate: `${yearNum}-${String(monthNum).padStart(2, '0')}-${getLastDayOfMonth(monthNum, yearNum)}`
+          });
+          
+          batchCount++;
+          totalCount++;
+          
+          if (batchCount >= maxBatchSize) {
+            await batch.commit();
+            batch = writeBatch(db);
+            batchCount = 0;
+          }
+        }
+      }
+      
+      // Commit self-assessments before linking
       if (batchCount > 0) {
         await batch.commit();
         batch = writeBatch(db);
         batchCount = 0;
       }
       
-      console.log(`✅ Created ${allParticipants.size} self-assessments`);
-      
-      // STEP 2: Bidirectional pairs (ALL levels)
+      // STEP 3: Bidirectional manager ↔ direct report WITH PAIR LINKING
       for (const manager of managers) {
         const directReports = await getDirectReports(manager.uid, manager.directReportIds);
         
         for (const report of directReports) {
-          const [userA, userB] = [manager.userId, report.userId].sort();
-          const pairId = `360-pair-${cycleId}-${userA}-${userB}`;
+          // ✨ CREATE PAIR IDs
+          const pairA_Id = `360-pair-${cycleId}-${report.userId}`; // About DR
+          const pairB_Id = `360-pair-${cycleId}-${manager.userId}`; // About Manager
           
-          // Manager → Report
+          // ═══════════════════════════════════════════════════════════
+          // PAIR A: About Direct Report (DR/MR)
+          // ═══════════════════════════════════════════════════════════
+          
           const downwardId = `${manager.userId}-assesses-${report.userId}-${cycleId}`;
           const downwardRef = doc(db, 'assessments', downwardId);
           
@@ -379,7 +436,9 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
             cycleYear: yearNum,
             cycleType: '360',
             assessmentType: 'manager-down',
-            pairId: pairId,
+            
+            // ✨ PAIR LINKING
+            pairId: pairA_Id,
             pairRole: 'other',
             pairSubject: report.userId,
             linkedSelfAssessmentId: selfAssessmentMap.get(report.userId),
@@ -427,7 +486,16 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
           batchCount++;
           totalCount++;
           
-          // Report → Manager
+          // ✨ Link DR's self to Pair A
+          const drSelfRef = doc(db, 'assessments', selfAssessmentMap.get(report.userId));
+          batch.update(drSelfRef, {
+            '360Pairs': arrayUnion(pairA_Id)
+          });
+          
+          // ═══════════════════════════════════════════════════════════
+          // PAIR B: About Manager (MR/DR)
+          // ═══════════════════════════════════════════════════════════
+          
           const upwardId = `${report.userId}-assesses-${manager.userId}-${cycleId}`;
           const upwardRef = doc(db, 'assessments', upwardId);
           
@@ -438,7 +506,9 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
             cycleYear: yearNum,
             cycleType: '360',
             assessmentType: 'manager-up',
-            pairId: pairId,
+            
+            // ✨ PAIR LINKING
+            pairId: pairB_Id,
             pairRole: 'other',
             pairSubject: manager.userId,
             linkedSelfAssessmentId: selfAssessmentMap.get(manager.userId),
@@ -486,12 +556,11 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
           batchCount++;
           totalCount++;
           
-          // Link self-assessments to this pair
-          const reportSelfRef = doc(db, 'assessments', selfAssessmentMap.get(report.userId));
+          // ✨ Link Manager's self to Pair B
           const managerSelfRef = doc(db, 'assessments', selfAssessmentMap.get(manager.userId));
-          
-          batch.update(reportSelfRef, { '360Pairs': arrayUnion(pairId) });
-          batch.update(managerSelfRef, { '360Pairs': arrayUnion(pairId) });
+          batch.update(managerSelfRef, {
+            '360Pairs': arrayUnion(pairB_Id)
+          });
           
           if (batchCount >= maxBatchSize) {
             await batch.commit();
@@ -501,165 +570,14 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
         }
       }
       
-      console.log(`✅ Created bidirectional pairs`);
-      
-      // STEP 3: ISF Supervisor ↔ ISF pairs
-      const isfSupervisors = Array.from(allParticipants).filter(p => 
-        p.directReportIds && p.directReportIds.length > 0 && 
-        (p.layer === 'ISF' || p.role === 'ISF Supervisor')
-      );
-      
-      for (const supervisor of isfSupervisors) {
-        const supervisorReports = await getDirectReports(supervisor.uid, supervisor.directReportIds);
-        
-        for (const report of supervisorReports) {
-          const [userA, userB] = [supervisor.userId, report.userId].sort();
-          const pairId = `360-pair-${cycleId}-${userA}-${userB}`;
-          
-          // Supervisor → Contributor
-          const downwardId = `${supervisor.userId}-assesses-${report.userId}-${cycleId}`;
-          const downwardRef = doc(db, 'assessments', downwardId);
-          
-          batch.set(downwardRef, {
-            cycleId,
-            cycleName: `${getMonthName(monthNum)} ${yearNum}`,
-            cycleMonth: monthNum,
-            cycleYear: yearNum,
-            cycleType: '360',
-            assessmentType: 'manager-down',
-            pairId: pairId,
-            pairRole: 'other',
-            pairSubject: report.userId,
-            linkedSelfAssessmentId: selfAssessmentMap.get(report.userId),
-            
-            giver: {
-              uid: supervisor.uid,
-              userId: supervisor.userId,
-              displayName: supervisor.displayName,
-              role: 'assessor',
-              layer: supervisor.layer || 'ISF',
-              viewTab: 'give'
-            },
-            
-            receiver: {
-              uid: report.uid,
-              userId: report.userId,
-              displayName: report.displayName,
-              role: 'subject',
-              layer: report.layer || 'ISF',
-              viewTab: 'receive'
-            },
-            
-            impact: {
-              affectsMSH: report.uid,
-              mshCycle: `${yearNum}-${String(monthNum).padStart(2, '0')}`,
-              mshId: null,
-              weight: 1.0,
-              isSelfAssessment: false
-            },
-            
-            assessorId: supervisor.uid,
-            assessorName: supervisor.displayName,
-            subjectId: report.uid,
-            subjectName: report.displayName,
-            
-            status: 'pending',
-            composite: null,
-            scores: {},
-            notes: {},
-            
-            createdAt: serverTimestamp(),
-            dueDate: `${yearNum}-${String(monthNum).padStart(2, '0')}-${getLastDayOfMonth(monthNum, yearNum)}`
-          });
-          
-          batchCount++;
-          totalCount++;
-          
-          // Contributor → Supervisor
-          const upwardId = `${report.userId}-assesses-${supervisor.userId}-${cycleId}`;
-          const upwardRef = doc(db, 'assessments', upwardId);
-          
-          batch.set(upwardRef, {
-            cycleId,
-            cycleName: `${getMonthName(monthNum)} ${yearNum}`,
-            cycleMonth: monthNum,
-            cycleYear: yearNum,
-            cycleType: '360',
-            assessmentType: 'manager-up',
-            pairId: pairId,
-            pairRole: 'other',
-            pairSubject: supervisor.userId,
-            linkedSelfAssessmentId: selfAssessmentMap.get(supervisor.userId),
-            
-            giver: {
-              uid: report.uid,
-              userId: report.userId,
-              displayName: report.displayName,
-              role: 'assessor',
-              layer: report.layer || 'ISF',
-              viewTab: 'give'
-            },
-            
-            receiver: {
-              uid: supervisor.uid,
-              userId: supervisor.userId,
-              displayName: supervisor.displayName,
-              role: 'subject',
-              layer: supervisor.layer || 'ISF',
-              viewTab: 'receive'
-            },
-            
-            impact: {
-              affectsMSH: supervisor.uid,
-              mshCycle: `${yearNum}-${String(monthNum).padStart(2, '0')}`,
-              mshId: null,
-              weight: 1.0,
-              isSelfAssessment: false
-            },
-            
-            assessorId: report.uid,
-            assessorName: report.displayName,
-            subjectId: supervisor.uid,
-            subjectName: supervisor.displayName,
-            
-            status: 'pending',
-            composite: null,
-            scores: {},
-            notes: {},
-            
-            createdAt: serverTimestamp(),
-            dueDate: `${yearNum}-${String(monthNum).padStart(2, '0')}-${getLastDayOfMonth(monthNum, yearNum)}`
-          });
-          
-          batchCount++;
-          totalCount++;
-          
-          // Link self-assessments to this pair
-          const reportSelfRef = doc(db, 'assessments', selfAssessmentMap.get(report.userId));
-          const supervisorSelfRef = doc(db, 'assessments', selfAssessmentMap.get(supervisor.userId));
-          
-          batch.update(reportSelfRef, { '360Pairs': arrayUnion(pairId) });
-          batch.update(supervisorSelfRef, { '360Pairs': arrayUnion(pairId) });
-          
-          if (batchCount >= maxBatchSize) {
-            await batch.commit();
-            batch = writeBatch(db);
-            batchCount = 0;
-          }
-        }
-      }
-      
-      console.log(`✅ Created ISF Supervisor pairs`);
-      
-      // STEP 4: P2P (ISL only)
+      // STEP 4: Peer-to-peer (ISL only) WITH PAIR LINKING
       const islManagers = managers.filter(m => m.role === 'ISL');
       
       for (const islAssessor of islManagers) {
         for (const islSubject of islManagers) {
           if (islAssessor.uid === islSubject.uid) continue;
           
-          const [userA, userB] = [islAssessor.userId, islSubject.userId].sort();
-          const pairId = `360-pair-p2p-${cycleId}-${userA}-${userB}`;
+          const pairId = `360-pair-p2p-${cycleId}-${islSubject.userId}-from-${islAssessor.userId}`;
           
           const p2pId = `${islAssessor.userId}-p2p-${islSubject.userId}-${cycleId}`;
           const p2pRef = doc(db, 'assessments', p2pId);
@@ -671,6 +589,8 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
             cycleYear: yearNum,
             cycleType: '360',
             assessmentType: 'peer',
+            
+            // ✨ PAIR LINKING
             pairId: pairId,
             pairRole: 'other',
             pairSubject: islSubject.userId,
@@ -719,9 +639,11 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
           batchCount++;
           totalCount++;
           
-          // Link self-assessment to this pair
+          // ✨ Link subject's self to this P2P pair
           const subjectSelfRef = doc(db, 'assessments', selfAssessmentMap.get(islSubject.userId));
-          batch.update(subjectSelfRef, { '360Pairs': arrayUnion(pairId) });
+          batch.update(subjectSelfRef, {
+            '360Pairs': arrayUnion(pairId)
+          });
           
           if (batchCount >= maxBatchSize) {
             await batch.commit();
@@ -735,11 +657,11 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
         await batch.commit();
       }
       
-      console.log(`✅ Created ${totalCount} 360 assessments`);
+      console.log(`✅ Created ${totalCount} assessments with 360 pair linking`);
       
     } else {
       // ═══════════════════════════════════════════════════════════
-      // 1x1 MONTHS: Manager → Direct Report (ALL LEVELS)
+      // 1x1 MONTHS: Manager → Direct Report only
       // ═══════════════════════════════════════════════════════════
       
       for (const manager of managers) {
@@ -811,11 +733,10 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
       if (batchCount > 0) {
         await batch.commit();
       }
-      
-      console.log(`✅ Created ${totalCount} 1x1 assessments`);
     }
     
-    assessmentsByMonth[`${getMonthName(monthNum)} ${yearNum}`] = totalCount;
+    assessmentsByMonth[`${getMonthName(monthNum)} ${yearNum}`] = batchCount;
+    console.log(`✅ Created ${batchCount} assessments for ${getMonthName(monthNum)} ${yearNum}`);
   }
   
   return {
@@ -825,7 +746,7 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
 };
 
 // ═══════════════════════════════════════════════════════════════
-// 🔍 ADMIN QUERY FUNCTIONS
+// 🔍 QUERY FUNCTIONS
 // ═══════════════════════════════════════════════════════════════
 
 export const getLastCycle = async () => {
@@ -840,7 +761,13 @@ export const getLastCycle = async () => {
 export const getAllCycles = async () => {
   const cyclesRef = collection(db, 'assessmentCycles');
   const snapshot = await getDocs(cyclesRef);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const cycles = snapshot.docs
+    .map(docSnap => ({ id: docSnap.id, ...docSnap.data() }))
+    .sort((a, b) => {
+      if (a.year !== b.year) return a.year - b.year;
+      return a.month - b.month;
+    });
+  return cycles;
 };
 
 export const getActiveCycle = async () => {
@@ -849,7 +776,6 @@ export const getActiveCycle = async () => {
   const currentYear = now.getFullYear();
   const paddedMonth = String(currentMonth).padStart(2, '0');
   const cycleId = `cycle-${currentYear}-${paddedMonth}`;
-  
   const cycleDoc = await getDoc(doc(db, 'assessmentCycles', cycleId));
   if (cycleDoc.exists()) {
     return { id: cycleDoc.id, ...cycleDoc.data() };
@@ -857,99 +783,137 @@ export const getActiveCycle = async () => {
   return null;
 };
 
+export const getCycleById = async (cycleId) => {
+  const cycleDoc = await getDoc(doc(db, 'assessmentCycles', cycleId));
+  if (cycleDoc.exists()) {
+    return { id: cycleDoc.id, ...cycleDoc.data() };
+  }
+  return null;
+};
+
+export const cyclesExistForYear = async (year) => {
+  const cyclesRef = collection(db, 'assessmentCycles');
+  const q = query(cyclesRef, where('year', '==', year), limit(1));
+  const snapshot = await getDocs(q);
+  return !snapshot.empty;
+};
+
+export const getMshPublishedCount = async (cycleId) => {
+  try {
+    const mshQuery = query(
+      collection(db, 'mshScores'),
+      where('cycleId', '==', cycleId)
+    );
+    const snapshot = await getDocs(mshQuery);
+    return snapshot.size;
+  } catch (error) {
+    console.error(`Error getting MSH count for cycle ${cycleId}:`, error);
+    return 0;
+  }
+};
+
+export const getTotalMshPublished = async () => {
+  try {
+    const snapshot = await getDocs(collection(db, 'mshScores'));
+    return snapshot.size;
+  } catch (error) {
+    console.error('Error getting total MSH count:', error);
+    return 0;
+  }
+};
+
 export const getAssessmentCountPreview = async () => {
   try {
+    console.log('📊 Calculating assessment count preview...');
     const managers = await getAllManagers();
-    
-    let iseCount = 0;
-    let islCount = 0;
-    let isfSupervisorCount = 0;
-    let iseDirectReports = 0;
-    let islDirectReports = 0;
-    let isfSupervisorDirectReports = 0;
-    
     const managerDetails = [];
+    
+    let totalDirectReports = 0;
+    let iseCount = 0, iseDirectReports = 0;
+    let islCount = 0, islDirectReports = 0;
+    let isfSupervisorCount = 0, isfSupervisorDirectReports = 0;
     
     for (const manager of managers) {
       const directReports = await getDirectReports(manager.uid, manager.directReportIds);
       const drCount = directReports.length;
+      totalDirectReports += drCount;
       
-      if (manager.layer === 'ISE') {
+      if (manager.role === 'ISE') {
         iseCount++;
         iseDirectReports += drCount;
-      } else if (manager.layer === 'ISL') {
+      } else if (manager.role === 'ISL') {
         islCount++;
         islDirectReports += drCount;
-      } else if (manager.role === 'ISF Supervisor' || manager.layer === 'ISF') {
+      } else if (manager.role === 'ISF Supervisor') {
         isfSupervisorCount++;
         isfSupervisorDirectReports += drCount;
       }
       
       managerDetails.push({
         name: manager.displayName,
-        layer: manager.layer,
+        layer: manager.role,
         directReports: drCount
       });
     }
     
-    const totalManagers = managers.length;
-    const totalDirectReports = iseDirectReports + islDirectReports + isfSupervisorDirectReports;
-    
-    // 1x1 calculations
     const assessments1x1PerMonth = totalDirectReports;
     const assessments1x1Total = assessments1x1PerMonth * 2;
     
-    // 360 calculations (MSH³ participants only)
-    // Self-assessments for MSH³ participants: 25 (ISE:1 + ISL:5 + ISF:19)
-    const selfAssessments360 = 25; // Fixed: Only MSH³ participants get self-assessments
-    const managerDRPairs360 = totalDirectReports * 2; // Bidirectional pairs
-    const p2pAssessments360 = islCount * (islCount - 1); // ISL peer-to-peer
+    const uniqueParticipants = new Set();
+    for (const manager of managers) {
+      uniqueParticipants.add(manager.uid);
+    }
+    for (const manager of managers) {
+      const directReports = await getDirectReports(manager.uid, manager.directReportIds);
+      for (const report of directReports) {
+        uniqueParticipants.add(report.uid);
+      }
+    }
+    
+    const selfAssessments360 = uniqueParticipants.size;
+    const managerDRPairs360 = totalDirectReports * 2;
+    const p2pAssessments360 = islCount * (islCount - 1);
     const total360Assessments = selfAssessments360 + managerDRPairs360 + p2pAssessments360;
     
-    // MSH³ Expected
-    const msh1x1Expected = 48; // 24 per month × 2
-    const msh360Expected = 34; // 24 MR-DR + 10 P2P
-    const mshTotalExpected = 82;
-    
+    const msh1x1Expected = 48;
+    const msh360Expected = 34;
+    const mshTotalExpected = msh1x1Expected + msh360Expected;
     const grandTotalPerCycle = assessments1x1Total + total360Assessments;
     
-    return {
-      success: true,
-      counts: {
-        iseCount,
-        islCount,
-        isfSupervisorCount,
-        iseDirectReports,
-        islDirectReports,
-        isfSupervisorDirectReports,
-        totalManagers,
-        totalDirectReports,
-        
-        assessments1x1PerMonth,
-        assessments1x1Total,
-        
-        selfAssessments360,
-        managerDRPairs360,
-        p2pAssessments360,
-        total360Assessments,
-        
-        msh1x1Expected,
-        msh360Expected,
-        mshTotalExpected,
-        
-        grandTotalPerCycle,
-        managers: managerDetails
-      }
+    const counts = {
+      totalManagers: managers.length,
+      totalDirectReports,
+      iseCount, iseDirectReports,
+      islCount, islDirectReports,
+      isfSupervisorCount, isfSupervisorDirectReports,
+      assessments1x1PerMonth,
+      assessments1x1Total,
+      selfAssessments360,
+      managerDRPairs360,
+      p2pAssessments360,
+      total360Assessments,
+      msh1x1Expected,
+      msh360Expected,
+      mshTotalExpected,
+      grandTotalPerCycle,
+      managers: managerDetails
     };
+    
+    console.log('✅ Assessment count preview calculated:', counts);
+    return { success: true, counts };
+    
   } catch (error) {
-    console.error('Error in getAssessmentCountPreview:', error);
+    console.error('❌ Error calculating assessment preview:', error);
     return { success: false, error: error.message };
   }
 };
 
 export const getCycleValidationStats = async () => {
   try {
-    const cyclesSnapshot = await getDocs(collection(db, 'assessmentCycles'));
+    console.log('🔍 Getting cycle validation stats...');
+    const cyclesRef = collection(db, 'assessmentCycles');
+    const cyclesSnapshot = await getDocs(cyclesRef);
+    
     const cycles = [];
     let totalAssessments = 0;
     let assessments1x1 = 0;
@@ -958,52 +922,37 @@ export const getCycleValidationStats = async () => {
     
     const statusCounts = {
       pending: 0,
+      in_progress: 0,
       completed: 0,
       calibrated: 0
     };
-    
+
     for (const cycleDoc of cyclesSnapshot.docs) {
       const cycleData = cycleDoc.data();
-      
-      // Get assessments for this cycle
       const assessmentsQuery = query(
         collection(db, 'assessments'),
         where('cycleId', '==', cycleData.cycleId)
       );
       const assessmentsSnapshot = await getDocs(assessmentsQuery);
       const assessmentCount = assessmentsSnapshot.size;
-      totalAssessments += assessmentCount;
       
-      // Count by type
-      let cycle1x1Count = 0;
-      let cycle360Count = 0;
-      
-      assessmentsSnapshot.forEach(doc => {
-        const data = doc.data();
-        if (data.cycleType === '1x1') {
-          cycle1x1Count++;
-          assessments1x1++;
-        } else if (data.cycleType === '360') {
-          cycle360Count++;
-          assessments360++;
+      assessmentsSnapshot.forEach(assessmentDoc => {
+        const status = assessmentDoc.data().status || 'pending';
+        if (statusCounts.hasOwnProperty(status)) {
+          statusCounts[status]++;
         }
-        
-        // Count status
-        if (data.status === 'pending') statusCounts.pending++;
-        else if (data.status === 'completed') statusCounts.completed++;
-        else if (data.status === 'calibrated') statusCounts.calibrated++;
       });
       
-      // Get MSH scores for this cycle
-      const mshQuery = query(
-        collection(db, 'mshScores'),
-        where('cycleMonth', '==', cycleData.month),
-        where('cycleYear', '==', cycleData.year)
-      );
-      const mshSnapshot = await getDocs(mshQuery);
-      const mshPublishedCount = mshSnapshot.size;
+      const mshPublishedCount = await getMshPublishedCount(cycleData.cycleId);
+      totalAssessments += assessmentCount;
       totalMshPublished += mshPublishedCount;
-      
+
+      if (cycleData.cycleType === '1x1') {
+        assessments1x1 += assessmentCount;
+      } else if (cycleData.cycleType === '360') {
+        assessments360 += assessmentCount;
+      }
+
       cycles.push({
         cycleId: cycleData.cycleId,
         monthName: cycleData.monthName,
@@ -1012,12 +961,25 @@ export const getCycleValidationStats = async () => {
         cycleType: cycleData.cycleType,
         cycleNumber: cycleData.cycleNumber,
         assessmentCount,
-        cycle1x1Count,
-        cycle360Count,
         mshPublishedCount
       });
     }
-    
+
+    cycles.sort((a, b) => {
+      if (a.year !== b.year) return a.year - b.year;
+      return a.month - b.month;
+    });
+
+    const allCyclesValid = cycles.every(cycle => {
+      const assessmentMatch = cycle.cycleType === '1x1' 
+        ? cycle.assessmentCount === 24 
+        : cycle.assessmentCount === 93;
+      const mshMatch = cycle.cycleType === '1x1'
+        ? cycle.mshPublishedCount === 24
+        : cycle.mshPublishedCount === 34;
+      return assessmentMatch && mshMatch;
+    });
+
     return {
       success: true,
       stats: {
@@ -1027,24 +989,42 @@ export const getCycleValidationStats = async () => {
         assessments360,
         totalMshPublished,
         statusCounts,
-        cycles
+        cycles,
+        allCyclesValid
       }
     };
+
   } catch (error) {
-    console.error('Error in getCycleValidationStats:', error);
-    return { success: false, error: error.message };
+    console.error('❌ Error getting cycle validation stats:', error);
+    return {
+      success: false,
+      error: error.message,
+      stats: {
+        totalCycles: 0,
+        totalAssessments: 0,
+        assessments1x1: 0,
+        assessments360: 0,
+        totalMshPublished: 0,
+        statusCounts: { pending: 0, in_progress: 0, completed: 0, calibrated: 0 },
+        cycles: [],
+        allCyclesValid: false
+      }
+    };
   }
 };
 
 export const closeCycle = async (cycleId) => {
-  await updateDoc(doc(db, 'assessmentCycles', cycleId), {
+  const cycleRef = doc(db, 'assessmentCycles', cycleId);
+  await updateDoc(cycleRef, {
     status: 'closed',
     closedAt: serverTimestamp()
   });
+  console.log(`✅ Cycle ${cycleId} closed`);
 };
 
 export const deleteCycle = async (cycleId) => {
   await deleteDoc(doc(db, 'assessmentCycles', cycleId));
+  console.log(`✅ Cycle ${cycleId} deleted`);
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -1070,3 +1050,22 @@ function getCycleNumber(startMonth) {
 function getLastDayOfMonth(month, year) {
   return new Date(year, month, 0).getDate();
 }
+
+// ═══════════════════════════════════════════════════════════════
+// 🔧 ADMIN HELPER FUNCTIONS
+// ═══════════════════════════════════════════════════════════════
+
+export const getLastestCycle = async () => {
+  return await getLastCycle();
+};
+
+export const getActiveCycle2 = async () => {
+  return await getActiveCycle();
+};
+
+export const createNextCycleFunction = async (startYear = null, startMonth = null) => {
+  return await createNextCycle(startYear, startMonth);
+};
+
+export const Card = null;
+export const Badge = null;

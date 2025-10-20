@@ -1,82 +1,112 @@
 // src/utils/firebaseUsers.js
+import { collection, getDocs, addDoc, updateDoc, doc, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import { collection, getDocs, doc, updateDoc, serverTimestamp, addDoc, query, where } from 'firebase/firestore';
 
 /**
  * Get all users from Firestore
  */
-export async function getAllUsers() {
+export const getAllUsers = async () => {
   try {
     const usersRef = collection(db, 'users');
     const snapshot = await getDocs(usersRef);
-    
-    const users = [];
-    snapshot.forEach((doc) => {
-      users.push({
-        id: doc.id,
-        ...doc.data()
-      });
-    });
-    
-    return users;
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
   } catch (error) {
-    console.error('Error fetching users:', error);
-    throw new Error(`Failed to fetch users: ${error.message}`);
+    console.error('Error getting users:', error);
+    throw error;
   }
-}
+};
 
 /**
- * Update user in Firestore
- * @param {string} userId - The user ID to update
- * @param {object} userData - The user data to update
+ * Create a new user in Firestore
  */
-export async function updateUser(userId, userData) {
+export const createUser = async (userData) => {
+  try {
+    const usersRef = collection(db, 'users');
+    
+    // Prepare user data with flags object
+    const newUser = {
+      userId: userData.userId || userData.email.split('@')[0],
+      email: userData.email,
+      displayName: userData.displayName,
+      layer: userData.layer,
+      pillar: userData.pillar || null,
+      subPillar: userData.subPillar || null,
+      pillarRole: userData.pillarRole || userData.jobTitle || null,
+      jobTitle: userData.jobTitle || userData.pillarRole || null,
+      directReportIds: userData.directReportIds || [],
+      flags: {
+        isAdmin: userData.isAdmin || false,
+        isSupervisor: userData.isSupervisor || false,
+        isExecutive: userData.layer === 'ISE' || false,
+        isPillarLeader: userData.layer === 'ISL' || false,
+        isHRP: userData.layer === 'HRP' || false
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    
+    const docRef = await addDoc(usersRef, newUser);
+    return docRef.id;
+  } catch (error) {
+    console.error('Error creating user:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update an existing user in Firestore
+ */
+export const updateUser = async (userId, userData) => {
   try {
     const userRef = doc(db, 'users', userId);
     
-    // Prepare update data with nested flags structure
-    // Note: Email is intentionally excluded - it should not be changed via this function
+    // Prepare update data with flags
     const updateData = {
       displayName: userData.displayName,
       layer: userData.layer,
       pillar: userData.pillar || null,
       subPillar: userData.subPillar || null,
-      pillarRole: userData.pillarRole || null,
-      jobTitle: userData.jobTitle || null,  // Add job title support
-      // Store supervisor and admin flags in nested structure
-      'flags.isSupervisor': userData.isSupervisor || false,
-      'flags.isAdmin': userData.isAdmin || false,
-      // Also update top-level fields for backwards compatibility
-      isSupervisor: userData.isSupervisor || false,
-      isAdmin: userData.isAdmin || false,
-      updatedAt: serverTimestamp()
+      pillarRole: userData.pillarRole || userData.jobTitle || null,
+      jobTitle: userData.jobTitle || userData.pillarRole || null,
+      directReportIds: userData.directReportIds || [],
+      flags: {
+        isAdmin: userData.isAdmin || false,
+        isSupervisor: userData.isSupervisor || false,
+        isExecutive: userData.layer === 'ISE' || false,
+        isPillarLeader: userData.layer === 'ISL' || false,
+        isHRP: userData.layer === 'HRP' || false
+      },
+      updatedAt: new Date().toISOString()
     };
-
+    
     await updateDoc(userRef, updateData);
-    console.log('User updated successfully:', userId);
-    return true;
   } catch (error) {
     console.error('Error updating user:', error);
-    throw new Error(`Failed to update user: ${error.message}`);
+    throw error;
   }
-}
+};
 
 /**
- * Get assessment counts for all users
- * Returns an object with userId as key and counts object as value
+ * Get assessment counts for all users across ALL cycles
+ * Returns object: { userId: { asAssessor: number, asAssessed: number } }
  */
-export async function getAssessmentCounts() {
+export const getAssessmentCounts = async () => {
   try {
     const assessmentsRef = collection(db, 'assessments');
     const snapshot = await getDocs(assessmentsRef);
     
+    // Initialize counts object
     const counts = {};
     
-    snapshot.forEach((doc) => {
-      const assessment = doc.data();
-      const assessorId = assessment.assessorId || assessment.raterId;
-      const assessedId = assessment.employeeId || assessment.subjectId;
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      const assessorId = data.assessorId;
+      const assessedId = data.assessedPersonId;
       
+      // Initialize user objects if they don't exist
       if (!counts[assessorId]) {
         counts[assessorId] = { asAssessor: 0, asAssessed: 0 };
       }
@@ -84,72 +114,30 @@ export async function getAssessmentCounts() {
         counts[assessedId] = { asAssessor: 0, asAssessed: 0 };
       }
       
+      // Increment counts
       counts[assessorId].asAssessor++;
       counts[assessedId].asAssessed++;
     });
     
     return counts;
   } catch (error) {
-    console.error('Error fetching assessment counts:', error);
+    console.error('Error getting assessment counts:', error);
     return {};
   }
-}
+};
 
 /**
- * Count direct reports for each user
- * Returns an object with userId as key and count as value
+ * Get direct report counts for all users
+ * Returns object: { userId: number }
  */
-export function getDirectReportCounts(users) {
+export const getDirectReportCounts = (users) => {
   const counts = {};
   
   users.forEach(user => {
-    // Count users who have this user as their supervisor
-    const directReports = users.filter(u => 
-      u.supervisorId === user.id || 
-      u.supervisor === user.id ||
-      u.managerId === user.id
-    );
-    
-    // Also check if user has directReportIds array
-    const fromDirectReportIds = user.directReportIds?.length || 0;
-    
-    // Use the maximum of both methods
-    counts[user.id] = Math.max(directReports.length, fromDirectReportIds);
+    if (user.directReportIds && Array.isArray(user.directReportIds)) {
+      counts[user.id] = user.directReportIds.length;
+    }
   });
   
   return counts;
-}
-
-/**
- * Create a new user in Firestore
- * @param {object} userData - The user data to create
- * @returns {Promise<string>} The new user ID
- */
-export async function createUser(userData) {
-  try {
-    const usersRef = collection(db, 'users');
-    
-    const newUser = {
-      displayName: userData.displayName,
-      email: userData.email,
-      layer: userData.layer,
-      pillar: userData.pillar || null,
-      subPillar: userData.subPillar || null,
-      pillarRole: userData.pillarRole || null,
-      jobTitle: userData.jobTitle || null,
-      'flags.isSupervisor': userData.isSupervisor || false,
-      'flags.isAdmin': userData.isAdmin || false,
-      isSupervisor: userData.isSupervisor || false,
-      isAdmin: userData.isAdmin || false,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    };
-
-    const docRef = await addDoc(usersRef, newUser);
-    console.log('User created successfully:', docRef.id);
-    return docRef.id;
-  } catch (error) {
-    console.error('Error creating user:', error);
-    throw new Error(`Failed to create user: ${error.message}`);
-  }
-}
+};

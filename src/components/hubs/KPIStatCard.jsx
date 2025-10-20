@@ -8,10 +8,11 @@ import Card from '../ui/Card';
  * KPIStatCard - Reusable KPI card for hub dashboards
  * 
  * @param {string} title - Card title (e.g., "ISOS Compass")
- * @param {number|string} value - Main KPI value (current month)
+ * @param {number|string} value - Main KPI value (current month composite score)
+ * @param {string} secondaryValue - Secondary value (completion count like "5 / 8")
  * @param {number} maxValue - Maximum value for the KPI (e.g., 12)
  * @param {React.Component} icon - Lucide icon component
- * @param {string} gradient - Gradient style: "blue", "purple", "green", "orange", "pink", "indigo"
+ * @param {string} gradient - Gradient style: "blue", "purple", "green", "orange", "pink", "indigo", "emerald", "cyan"
  * @param {number|string|null} trend - Trend value (e.g., +0.2, -0.1, 0 for no change, "---" for no data)
  * @param {string} trendLabel - Label for trend (e.g., "vs last month")
  * @param {Array} metadata - Array of { label: string, value: string|number } for bottom section
@@ -20,6 +21,7 @@ import Card from '../ui/Card';
 function KPIStatCard({ 
   title = "Performance", 
   value = "—", 
+  secondaryValue = null,
   maxValue = null,
   icon: Icon,
   gradient = "blue",
@@ -66,6 +68,18 @@ function KPIStatCard({
       border: "border-indigo-200",
       icon: "text-indigo-600",
       divider: "border-indigo-200"
+    },
+    emerald: {
+      bg: "bg-gradient-to-br from-emerald-50 to-teal-50",
+      border: "border-emerald-200",
+      icon: "text-emerald-600",
+      divider: "border-emerald-200"
+    },
+    cyan: {
+      bg: "bg-gradient-to-br from-cyan-50 to-blue-50",
+      border: "border-cyan-200",
+      icon: "text-cyan-600",
+      divider: "border-cyan-200"
     }
   };
 
@@ -132,10 +146,16 @@ function KPIStatCard({
             <span className="text-5xl font-bold text-gray-900">
               {value ?? "—"}
             </span>
-            {shouldShowMaxValue && (
-              <span className="text-lg text-gray-500 font-semibold">/ {maxValue}</span>
-            )}
           </div>
+          
+          {/* Secondary Value (Completion Count) */}
+          {secondaryValue && (
+            <div className="mt-1">
+              <span className="text-sm font-medium text-gray-600">
+                {secondaryValue}
+              </span>
+            </div>
+          )}
           
           {/* Trend Indicator */}
           {trendDisplay && (

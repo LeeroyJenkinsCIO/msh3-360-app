@@ -1,6 +1,8 @@
 // src/pages/admin/AdminCyclesManager.jsx
 import React, { useState, useEffect } from 'react';
-import { Calendar, RefreshCw, PlayCircle, CheckCircle, XCircle, BarChart3 } from 'lucide-react';
+import { Calendar, RefreshCw, PlayCircle, CheckCircle, XCircle, BarChart3, Wrench } from 'lucide-react';
+import { collection, query, where, getDocs, writeBatch, doc, arrayUnion } from 'firebase/firestore';
+import { db } from '../../firebase';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import { 
@@ -33,6 +35,10 @@ function AdminCyclesManager() {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
+  // 🔍 State for diagnostic
+  const [diagnosticReport, setDiagnosticReport] = useState(null);
+  const [diagnosticLoading, setDiagnosticLoading] = useState(false);
+
   useEffect(() => {
     loadData();
     loadPreview();
@@ -51,7 +57,6 @@ function AdminCyclesManager() {
       setLastCycle(lastCycleResult);
       setActiveCycle(activeCycleResult);
       
-      // Only show first-time setup modal when explicitly triggered (via refresh)
       if (!lastCycleResult && showModalIfEmpty) {
         setShowFirstTimeSetup(true);
       }
@@ -97,7 +102,6 @@ function AdminCyclesManager() {
     try {
       console.log('Creating next cycle...');
       
-      // If first time, pass the selected month/year
       const result = showFirstTimeSetup 
         ? await createNextCycle(selectedYear, selectedMonth)
         : await createNextCycle();
@@ -126,9 +130,161 @@ function AdminCyclesManager() {
   };
 
   const handleRefresh = async () => {
-    await loadData(true); // Pass true to trigger modal if no data
+    await loadData(true);
     await loadPreview();
     await loadValidation();
+  };
+
+  // 🔍 Run 360 Pair Linking Diagnostic
+  const handleRunDiagnostic = async () => {
+    setDiagnosticLoading(true);
+    setDiagnosticReport(null);
+    
+    try {
+      console.log('🔍 Running 360 pair linking diagnostic...');
+      
+      // Get ANY 360 cycle (find the most recent one)
+      const cyclesRef = collection(db, 'assessmentCycles');
+      const cycleQuery = query(
+        cyclesRef,
+        where('cycleType', '==', '360')
+      );
+      
+      const cycleSnapshot = await getDocs(cycleQuery);
+      if (cycleSnapshot.empty) {
+        setDiagnosticReport({ error: 'No 360 cycle found. Create a cycle first (the 3rd month will be 360).' });
+        return;
+      }
+      
+      // Sort by year/month and get the latest
+      const cycles = cycleSnapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => {
+          if (a.year !== b.year) return b.year - a.year;
+          return b.month - a.month;
+        });
+      
+      const latestCycle = cycles[0];
+      const cycleId = latestCycle.cycleId;
+      
+      console.log(`✅ Found 360 cycle: ${latestCycle.monthName} ${latestCycle.year}`);
+      
+      // Get all assessments
+      const assessmentsRef = collection(db, 'assessments');
+      const assessQuery = query(assessmentsRef, where('cycleId', '==', cycleId));
+      const assessSnapshot = await getDocs(assessQuery);
+      
+      const selfAssessments = [];
+      const pairAssessments = [];
+      const peerAssessments = [];
+      const pairMap = new Map();
+      
+      // Categorize assessments
+      assessSnapshot.forEach(docSnap => {
+        const data = { id: docSnap.id, ...docSnap.data() };
+        
+        if (data.assessmentType === 'self') {
+          selfAssessments.push(data);
+        } else if (data.assessmentType === 'peer') {
+          peerAssessments.push(data);
+        } else if (data.assessmentType === 'manager-down' || data.assessmentType === 'manager-up') {
+          pairAssessments.push(data);
+          
+          if (data.pairId) {
+            if (!pairMap.has(data.pairId)) {
+              pairMap.set(data.pairId, []);
+            }
+            pairMap.get(data.pairId).push(data);
+          }
+        }
+      });
+      
+      // Analyze pairs
+      const properlyLinkedPairs = [];
+      const brokenPairs = [];
+      
+      for (const [pairId, assessments] of pairMap.entries()) {
+        if (assessments.length === 2) {
+          const [a1, a2] = assessments;
+          
+          const isBidirectional = 
+            a1.assessorId === a2.subjectId && 
+            a1.subjectId === a2.assessorId;
+          
+          const a1SelfLinked = selfAssessments.find(s => 
+            s.subjectId === a1.subjectId && 
+            s['360Pairs']?.includes(pairId)
+          );
+          
+          const a2SelfLinked = selfAssessments.find(s => 
+            s.subjectId === a2.subjectId && 
+            s['360Pairs']?.includes(pairId)
+          );
+          
+          if (isBidirectional && a1SelfLinked && a2SelfLinked) {
+            properlyLinkedPairs.push({
+              pairId,
+              assessments: [
+                `${a1.assessorName} → ${a1.subjectName}`,
+                `${a2.assessorName} → ${a2.subjectName}`
+              ],
+              selfLinked: true
+            });
+          } else {
+            brokenPairs.push({
+              pairId,
+              assessments: [
+                `${a1.assessorName} → ${a1.subjectName}`,
+                `${a2.assessorName} → ${a2.subjectName}`
+              ],
+              issues: [
+                !isBidirectional && '❌ Not bidirectional',
+                !a1SelfLinked && `❌ ${a1.subjectName} self not linked`,
+                !a2SelfLinked && `❌ ${a2.subjectName} self not linked`
+              ].filter(Boolean)
+            });
+          }
+        } else {
+          brokenPairs.push({
+            pairId,
+            assessments: assessments.map(a => `${a.assessorName} → ${a.subjectName}`),
+            issues: [`❌ Only ${assessments.length} assessment(s) in pair (expected 2)`]
+          });
+        }
+      }
+      
+      const orphanedAssessments = pairAssessments.filter(a => !a.pairId);
+      const orphanedSelfs = selfAssessments.filter(s => 
+        !s['360Pairs'] || s['360Pairs'].length === 0
+      );
+      
+      setDiagnosticReport({
+        cycleId,
+        totalAssessments: assessSnapshot.size,
+        selfAssessments: selfAssessments.length,
+        pairAssessments: pairAssessments.length,
+        peerAssessments: peerAssessments.length,
+        
+        totalPairs: pairMap.size,
+        properlyLinkedPairs: properlyLinkedPairs.length,
+        brokenPairs: brokenPairs.length,
+        
+        properlyLinkedPairsList: properlyLinkedPairs,
+        brokenPairsList: brokenPairs,
+        orphanedAssessments,
+        orphanedSelfs,
+        
+        isHealthy: brokenPairs.length === 0 && orphanedAssessments.length === 0 && orphanedSelfs.length === 0
+      });
+      
+      console.log('✅ Diagnostic complete');
+      
+    } catch (error) {
+      console.error('❌ Diagnostic error:', error);
+      setDiagnosticReport({ error: error.message });
+    } finally {
+      setDiagnosticLoading(false);
+    }
   };
 
   const getStatusBadge = (status) => {
@@ -387,7 +543,7 @@ function AdminCyclesManager() {
             </div>
           </div>
 
-          {/* NEW: MSH³ Published Expected Box */}
+          {/* MSH³ Published Expected Box */}
           <div className="bg-white rounded-lg p-4 border-2 border-amber-300 mb-4">
             <h3 className="text-sm font-bold text-amber-900 mb-3">MSH³ Published (Expected per Cycle)</h3>
             <div className="grid grid-cols-2 gap-4">
@@ -622,19 +778,28 @@ function AdminCyclesManager() {
                         <span className="text-sm font-bold text-gray-900">Actual MSH³ Published:</span>
                         <span className="text-2xl font-bold text-amber-700">{validationStats.totalMshPublished || 0}</span>
                       </div>
-                      {validationStats.totalMshPublished !== undefined && (
-                        <div className="mt-2 text-xs">
-                          {validationStats.totalMshPublished === (previewCounts.mshTotalExpected || 82) * validationStats.totalCycles ? (
-                            <span className="text-green-700 font-semibold">✅ All expected MSH³ scores published!</span>
-                          ) : validationStats.totalMshPublished < (previewCounts.mshTotalExpected || 82) * validationStats.totalCycles ? (
-                            <span className="text-amber-700 font-semibold">
-                              ⏳ {((previewCounts.mshTotalExpected || 82) * validationStats.totalCycles) - validationStats.totalMshPublished} scores pending publication
-                            </span>
-                          ) : (
-                            <span className="text-blue-700 font-semibold">ℹ️ Review MSH³ count</span>
-                          )}
-                        </div>
-                      )}
+                      {validationStats.totalMshPublished !== undefined && (() => {
+                        const expectedTotal = validationStats.cycles?.reduce((sum, cycle) => {
+                          const cycleExpected = cycle.cycleType === '1x1' ? 24 : 34;
+                          return sum + cycleExpected;
+                        }, 0) || 0;
+                        
+                        const pending = Math.max(0, expectedTotal - validationStats.totalMshPublished);
+                        
+                        return (
+                          <div className="mt-2 text-xs">
+                            {validationStats.totalMshPublished === expectedTotal ? (
+                              <span className="text-green-700 font-semibold">✅ All expected MSH³ scores published!</span>
+                            ) : validationStats.totalMshPublished < expectedTotal ? (
+                              <span className="text-amber-700 font-semibold">
+                                ⏳ {pending} scores pending publication (Expected: {expectedTotal})
+                              </span>
+                            ) : (
+                              <span className="text-blue-700 font-semibold">ℹ️ Review MSH³ count (Expected: {expectedTotal}, Got: {validationStats.totalMshPublished})</span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 )}
@@ -643,6 +808,182 @@ function AdminCyclesManager() {
           </div>
         </Card>
       )}
+
+      {/* 🔍 360 PAIR LINKING DIAGNOSTIC CARD */}
+      <Card className="bg-gradient-to-r from-cyan-50 to-blue-50 border-2 border-cyan-300">
+        <div className="flex items-center gap-3 mb-4">
+          <BarChart3 className="w-6 h-6 text-cyan-600" />
+          <h2 className="text-xl font-bold text-gray-900">🔍 360 Pair Linking Diagnostic</h2>
+        </div>
+
+        <div className="bg-cyan-100 border border-cyan-200 rounded-lg p-4 mb-4">
+          <p className="text-sm text-cyan-900 mb-2">
+            <strong>What this checks:</strong>
+          </p>
+          <ul className="list-disc list-inside text-sm text-cyan-900 space-y-1">
+            <li>All manager ↔ DR pairs have matching pairIds</li>
+            <li>Each pair has exactly 2 assessments (bidirectional)</li>
+            <li>Self-assessments are linked to their pairs via 360Pairs array</li>
+            <li>No orphaned assessments without pairIds</li>
+          </ul>
+        </div>
+
+        <Button
+          onClick={handleRunDiagnostic}
+          disabled={diagnosticLoading}
+          className="w-full mb-4"
+          size="lg"
+          variant="primary"
+        >
+          {diagnosticLoading ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+              Running Diagnostic...
+            </>
+          ) : (
+            <>
+              <BarChart3 className="w-5 h-5 mr-2" />
+              Run 360 Pair Linking Diagnostic
+            </>
+          )}
+        </Button>
+
+        {diagnosticReport && (
+          <div className="space-y-4">
+            {diagnosticReport.error ? (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-red-800 font-semibold">❌ Error: {diagnosticReport.error}</p>
+              </div>
+            ) : (
+              <>
+                {/* Overall Status */}
+                <div className={`rounded-lg p-4 border-2 ${
+                  diagnosticReport.isHealthy 
+                    ? 'bg-green-50 border-green-300' 
+                    : 'bg-yellow-50 border-yellow-300'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    {diagnosticReport.isHealthy ? (
+                      <>
+                        <CheckCircle className="w-8 h-8 text-green-600" />
+                        <div>
+                          <h3 className="text-lg font-bold text-green-900">✅ 360 Linking is Healthy!</h3>
+                          <p className="text-sm text-green-700">All pairs are properly linked</p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="w-8 h-8 text-yellow-600" />
+                        <div>
+                          <h3 className="text-lg font-bold text-yellow-900">⚠️ Issues Found</h3>
+                          <p className="text-sm text-yellow-700">Some pairs need fixing</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Stats Grid */}
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="bg-white rounded-lg p-3 border border-gray-200 text-center">
+                    <div className="text-2xl font-bold text-blue-700">{diagnosticReport.totalAssessments}</div>
+                    <div className="text-xs text-gray-600 mt-1">Total Assessments</div>
+                  </div>
+                  <div className="bg-white rounded-lg p-3 border border-purple-200 text-center">
+                    <div className="text-2xl font-bold text-purple-700">{diagnosticReport.selfAssessments}</div>
+                    <div className="text-xs text-gray-600 mt-1">Self Assessments</div>
+                  </div>
+                  <div className="bg-white rounded-lg p-3 border border-indigo-200 text-center">
+                    <div className="text-2xl font-bold text-indigo-700">{diagnosticReport.totalPairs}</div>
+                    <div className="text-xs text-gray-600 mt-1">Total Pairs</div>
+                  </div>
+                  <div className="bg-white rounded-lg p-3 border border-cyan-200 text-center">
+                    <div className="text-2xl font-bold text-cyan-700">{diagnosticReport.peerAssessments}</div>
+                    <div className="text-xs text-gray-600 mt-1">Peer Assessments</div>
+                  </div>
+                </div>
+
+                {/* Pair Status */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-green-50 rounded-lg p-4 border border-green-200">
+                    <div className="text-3xl font-bold text-green-700 mb-1">
+                      {diagnosticReport.properlyLinkedPairs}
+                    </div>
+                    <div className="text-sm font-semibold text-green-900">✅ Properly Linked Pairs</div>
+                  </div>
+                  <div className="bg-red-50 rounded-lg p-4 border border-red-200">
+                    <div className="text-3xl font-bold text-red-700 mb-1">
+                      {diagnosticReport.brokenPairs}
+                    </div>
+                    <div className="text-sm font-semibold text-red-900">❌ Broken Pairs</div>
+                  </div>
+                </div>
+
+                {/* Issues List */}
+                {(diagnosticReport.brokenPairs > 0 || 
+                  diagnosticReport.orphanedAssessments.length > 0 || 
+                  diagnosticReport.orphanedSelfs.length > 0) && (
+                  <div className="bg-red-50 rounded-lg p-4 border border-red-200">
+                    <h3 className="text-sm font-bold text-red-900 mb-3">Issues Found:</h3>
+                    
+                    {diagnosticReport.brokenPairsList.length > 0 && (
+                      <div className="mb-3">
+                        <p className="text-sm font-semibold text-red-800 mb-2">Broken Pairs:</p>
+                        <div className="space-y-2">
+                          {diagnosticReport.brokenPairsList.slice(0, 5).map((pair, idx) => (
+                            <div key={idx} className="bg-white rounded p-2 text-xs">
+                              <div className="font-mono text-gray-600 mb-1">{pair.pairId}</div>
+                              <div className="text-gray-700">{pair.assessments.join(' ⇄ ')}</div>
+                              <div className="text-red-600 mt-1">{pair.issues.join(', ')}</div>
+                            </div>
+                          ))}
+                          {diagnosticReport.brokenPairsList.length > 5 && (
+                            <p className="text-xs text-gray-600">...and {diagnosticReport.brokenPairsList.length - 5} more</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {diagnosticReport.orphanedAssessments.length > 0 && (
+                      <div className="mb-3">
+                        <p className="text-sm font-semibold text-red-800 mb-2">
+                          Orphaned Assessments (no pairId): {diagnosticReport.orphanedAssessments.length}
+                        </p>
+                      </div>
+                    )}
+                    
+                    {diagnosticReport.orphanedSelfs.length > 0 && (
+                      <div>
+                        <p className="text-sm font-semibold text-red-800 mb-2">
+                          Self-Assessments with no pairs linked: {diagnosticReport.orphanedSelfs.length}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Sample of Good Pairs */}
+                {diagnosticReport.properlyLinkedPairsList.length > 0 && (
+                  <details className="bg-green-50 rounded-lg p-4 border border-green-200">
+                    <summary className="cursor-pointer text-sm font-semibold text-green-900 hover:text-green-700">
+                      View Sample Properly Linked Pairs ({diagnosticReport.properlyLinkedPairsList.length} total)
+                    </summary>
+                    <div className="mt-3 space-y-2">
+                      {diagnosticReport.properlyLinkedPairsList.slice(0, 10).map((pair, idx) => (
+                        <div key={idx} className="bg-white rounded p-2 text-xs">
+                          <div className="font-mono text-gray-600 mb-1">{pair.pairId}</div>
+                          <div className="text-gray-700">{pair.assessments.join(' ⇄ ')}</div>
+                          <div className="text-green-600 mt-1">✅ Self-assessments linked</div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </Card>
 
       <Card>
         <h2 className="text-xl font-semibold text-gray-900 mb-4">

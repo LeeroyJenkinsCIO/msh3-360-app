@@ -1,7 +1,19 @@
-// src/components/hub/HubHeroBanner.jsx
+// 📁 SAVE TO: src/components/hubs/HubHeroBanner.jsx
+// Reusable Hero Banner for all ISOS Hubs
+// ✅ Silver-blue gradient added for ISE
+
 import React from 'react';
 import { Sparkles } from 'lucide-react';
 
+/**
+ * HubHeroBanner - Reusable hero banner for all ISOS hubs
+ * 
+ * @param {string} gradient - Color gradient: "red", "purple", "blue", "silverblue", "indigo", "yellow", "green"
+ * @param {string} title - Main title (e.g., "ISOS Hub")
+ * @param {string} subtitle - Subtitle text (e.g., "ISE Executive View")
+ * @param {React.Component} icon - Lucide icon component to display
+ * @param {boolean} showSparkles - Show sparkles icon if no custom icon provided
+ */
 const HubHeroBanner = ({ 
   gradient = 'blue',
   title = 'ISOS Hub',
@@ -11,16 +23,13 @@ const HubHeroBanner = ({
 }) => {
   // Gradient configurations for each hub type
   const gradients = {
-    red: 'from-red-600 via-rose-600 to-pink-600',           // Admin Panel
-    orange: 'from-orange-500 via-amber-500 to-yellow-500',  // HRP Hub
-    silver: 'from-gray-500 via-slate-500 to-zinc-500',      // ISE Hub
-    indigo: 'from-indigo-600 via-purple-600 to-blue-600',   // ISL Hub
-    yellow: 'from-yellow-500 via-amber-500 to-orange-500',  // ISF Supervisor Hub
-    green: 'from-green-600 via-emerald-600 to-teal-600',    // ISF Hub
-    
-    // Legacy/additional options
+    red: 'from-red-600 via-rose-600 to-pink-600',
     purple: 'from-purple-600 via-violet-600 to-fuchsia-600',
-    blue: 'from-blue-600 via-sky-600 to-cyan-600'
+    blue: 'from-blue-600 via-sky-600 to-cyan-600',
+    silverblue: 'from-slate-600 via-gray-700 to-blue-800',
+    indigo: 'from-indigo-600 via-purple-600 to-blue-600',
+    yellow: 'from-yellow-500 via-amber-500 to-orange-500',
+    green: 'from-green-600 via-emerald-600 to-teal-600'
   };
 
   const selectedGradient = gradients[gradient] || gradients.blue;

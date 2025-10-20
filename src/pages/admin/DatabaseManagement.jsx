@@ -1,4 +1,6 @@
 // src/pages/admin/DatabaseManagement.jsx
+// ✅ FIXED: Counter document IDs now match 1x1AssessGrid.js ('msh' instead of 'mshCounter')
+
 import React, { useState, useEffect } from 'react';
 import { 
   Database, Trash2, RefreshCw, AlertTriangle, 
@@ -64,13 +66,13 @@ function DatabaseManagement() {
       // Calculate total transactional documents
       const totalTransactionalDocs = totalAssessments + totalMshScores + totalCycles;
       
-      // Get counters
+      // ✅ FIXED: Read from 'msh' counter (not 'mshCounter')
       const countersSnapshot = await getDocs(collection(db, 'counters'));
       let currentMSH = 0;
       
       countersSnapshot.forEach(doc => {
-        if (doc.id === 'mshCounter') {
-          currentMSH = doc.data().currentMSH || 0;
+        if (doc.id === 'msh') {  // ✅ Changed from 'mshCounter'
+          currentMSH = doc.data().current || 0;  // ✅ Changed from 'currentMSH'
         }
       });
       
@@ -205,9 +207,9 @@ function DatabaseManagement() {
         await batch.commit();
       }
       
-      // Reset MSH counter
-      await setDoc(doc(db, 'counters', 'mshCounter'), {
-        currentMSH: 0,
+      // ✅ FIXED: Reset 'msh' counter (not 'mshCounter')
+      await setDoc(doc(db, 'counters', 'msh'), {
+        current: 0,
         lastUpdated: serverTimestamp()
       });
       
@@ -400,8 +402,9 @@ function DatabaseManagement() {
         resetMethod: 'nuclear'
       });
       
-      await setDoc(doc(db, 'counters', 'mshCounter'), {
-        currentMSH: 0,
+      // ✅ FIXED: Reset 'msh' counter (not 'mshCounter')
+      await setDoc(doc(db, 'counters', 'msh'), {
+        current: 0,
         lastUpdated: serverTimestamp(),
         resetMethod: 'nuclear'
       });
@@ -483,10 +486,10 @@ function DatabaseManagement() {
         </div>
       </Card>
 
-      {/* Database Statistics - Option C: Total + Breakdowns */}
+      {/* Database Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         
-        {/* 1. Total Transactional Documents (Primary Validation) */}
+        {/* 1. Total Transactional Documents */}
         <Card className="bg-white border-2 border-blue-200">
           <div className="flex items-center justify-between">
             <div>
@@ -498,7 +501,7 @@ function DatabaseManagement() {
           </div>
         </Card>
 
-        {/* 2. Assessment Forms (Breakdown) */}
+        {/* 2. Assessment Forms */}
         <Card className="bg-white">
           <div className="flex items-center justify-between">
             <div>
@@ -512,7 +515,7 @@ function DatabaseManagement() {
           </div>
         </Card>
 
-        {/* 3. MSH Scores (Breakdown) */}
+        {/* 3. MSH Scores */}
         <Card className="bg-white">
           <div className="flex items-center justify-between">
             <div>
@@ -524,7 +527,7 @@ function DatabaseManagement() {
           </div>
         </Card>
 
-        {/* 4. Cycles (Breakdown) */}
+        {/* 4. Cycles */}
         <Card className="bg-white">
           <div className="flex items-center justify-between">
             <div>
@@ -541,7 +544,7 @@ function DatabaseManagement() {
           <div className="flex items-center justify-between">
             <div>
               <div className="text-3xl font-bold text-orange-600">
-                MSH{stats.currentMSH}
+                MSH-{String(stats.currentMSH).padStart(3, '0')}
               </div>
               <div className="text-sm text-gray-600 font-medium">Current MSH</div>
               <div className="text-xs text-gray-500 mt-1">Last published</div>
@@ -551,7 +554,7 @@ function DatabaseManagement() {
         </Card>
       </div>
 
-      {/* Transactional Operations */}
+      {/* Destructive Operations */}
       <Card className="border-2 border-red-200 bg-red-50">
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-2">

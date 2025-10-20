@@ -1,5 +1,5 @@
 // 📁 SAVE TO: src/components/hubs/AssessmentCycleGrid.js
-// UPDATED - Added support for "Review Complete" badge in HRP column
+// UPDATED - Added "Not Aligned" badge styling with orange/reddish hue
 
 import React from 'react';
 import { Calendar, Eye, AlertCircle, CheckCircle } from 'lucide-react';
@@ -28,6 +28,14 @@ function AssessmentCycleGrid({
   const getStatusBadge = (member) => {
     const assessment = member.currentAssessment;
     
+    // Debug logging
+    console.log('Assessment status check:', {
+      memberName: member.name,
+      assessment: assessment,
+      status: assessment?.status,
+      allKeys: assessment ? Object.keys(assessment) : []
+    });
+    
     if (!assessment) {
       return <Badge variant="secondary" className="bg-gray-100 text-gray-600">Not Started</Badge>;
     }
@@ -44,11 +52,13 @@ function AssessmentCycleGrid({
       return <Badge variant="success" className="bg-green-100 text-green-800">Completed</Badge>;
     }
 
+    // ✨ NEW: Not Aligned badge with orange/reddish styling
     if (assessment.status === 'not-aligned') {
-      return <Badge variant="warning" className="bg-orange-100 text-orange-800">Not Aligned</Badge>;
+      return <Badge className="bg-orange-100 text-orange-800 border border-orange-300">Complete.NA</Badge>;
     }
 
-    return <Badge variant="secondary">Unknown</Badge>;
+    // Fallback: show what status we actually have
+    return <Badge variant="secondary" className="bg-red-100 text-red-800">Unknown: {assessment.status || 'null'}</Badge>;
   };
 
   const getActionButton = (member) => {
@@ -99,14 +109,18 @@ function AssessmentCycleGrid({
       return <span className="text-gray-400 text-sm">—</span>;
     }
 
-    if (assessment.alignmentStatus === 'aligned') {
+    // ✨ UPDATED: Check both alignmentStatus and status fields
+    if (assessment.alignmentStatus === 'aligned' || assessment.status === 'completed') {
       return <Badge variant="success" className="bg-green-100 text-green-800">Aligned</Badge>;
     }
 
-    return <Badge variant="warning" className="bg-orange-100 text-orange-800">Not Aligned</Badge>;
+    if (assessment.alignmentStatus === 'not-aligned' || assessment.status === 'not-aligned') {
+      return <Badge variant="warning" className="bg-orange-100 text-orange-800">Not Aligned</Badge>;
+    }
+
+    return <span className="text-gray-400 text-sm">—</span>;
   };
 
-  // ✨ UPDATED: Use new badge utility for HRP column
   const getHRPIndicator = (assessment) => {
     if (!assessment || assessment.status === 'pending' || assessment.status === 'draft') {
       return <span className="text-gray-400 text-sm">—</span>;

@@ -1,17 +1,17 @@
-// 📁 SAVE TO: src/pages/is-os/ISOSHubISL.js
-// ISL Hub with KPI StatCards - Pillar Performance, Leadership, Personal
-// UPDATED: KPI calculation now includes both 'completed' and 'not-aligned' statuses
+// 📁 SAVE TO: src/pages/is-os/ISOSHubISL.jsx
+// ISL Hub - Complete with 4 KPI Cards, Trends, and Assessment Grids
+// Updated: Cycle-based rolling averages, month-over-month trends
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { 
-  Calendar, Zap, Users, TrendingUp, Target, Award, User
-} from 'lucide-react';
-import Card from '../../components/ui/Card';
+import { Compass, Award, Building2, User } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { getPillarDisplayName } from '../../utils/pillarHelpers';
+import HubHeroBanner from '../../components/hubs/HubHeroBanner';
+import KPIStatCard from '../../components/hubs/KPIStatCard';
+import HubTabs from '../../components/hubs/HubTabs';
+import HubMetricsBar from '../../components/hubs/HubMetricsBar';
 import UnifiedAssessmentGrid from '../../components/hubs/UnifiedAssessmentGrid';
 import PublishedMSHScoresGrid from '../../components/hubs/PublishedMSHScoresGrid';
 
@@ -20,261 +20,345 @@ function ISOSHubISL() {
   const navigate = useNavigate();
   const location = useLocation();
   
+  const CYCLE_START_DATE = new Date(2025, 9, 1); // Oct 1, 2025
+  
   const [activeTab, setActiveTab] = useState('team');
   const [myTeamAssessments, setMyTeamAssessments] = useState([]);
   const [myAssessments, setMyAssessments] = useState([]);
   const [myMSHScores, setMyMSHScores] = useState([]);
   const [pillarInfo, setPillarInfo] = useState(null);
   const [loading, setLoading] = useState(true);
-  
-  const [kpis, setKpis] = useState({
-    pillarComposite: null,
-    pillarTrend: null,
-    isfMemberCount: 0,
-    totalPillarAssessments: 0,
+  const [metrics, setMetrics] = useState({
+    // Cycle info
+    cycleNumber: 1,
+    cycleType: '1x1',
+    currentMonth: 'OCTOBER 2025',
     
-    leadershipComposite: null,
-    leadershipAssessmentCount: 0,
+    // ISOS Compass (org-wide)
+    isosCompass: null,
+    isosCompassTrend: null,
+    isosCompassRolling: null,
     
-    personalComposite: null,
-    personalLatestCycle: null,
-    personalTotalScores: 0
+    // ISL Leadership (ISL layer)
+    islLeadership: null,
+    islLeadershipTrend: null,
+    islLeadershipRolling: null,
+    
+    // Pillar Health (my ISF team)
+    pillarHealth: null,
+    pillarHealthTrend: null,
+    pillarHealthRolling: null,
+    
+    // My Compass (personal)
+    myCompass: null,
+    myCompassTrend: null,
+    myCompassRolling: null,
+    myLatestCycle: null,
+    
+    // Progress tracking
+    completedCount: 0,
+    totalCount: 0
   });
 
-  useEffect(() => {
-    if (user?.uid && user?.userId) {
-      fetchHubData();
-    }
-  }, [user, location.key]);
-
-  const fetchHubData = async () => {
-    try {
-      setLoading(true);
-      
-      // Get pillar info
-      const pillarsRef = collection(db, 'pillars');
-      const pillarsSnapshot = await getDocs(pillarsRef);
-      
-      let myPillar = null;
-      pillarsSnapshot.docs.forEach(doc => {
-        const pillarData = doc.data();
-        if (pillarData.pillarLeaderId === user.userId) {
-          myPillar = { id: doc.id, ...pillarData };
-        }
-      });
-      
-      setPillarInfo(myPillar);
-      console.log('✅ My Pillar:', myPillar);
-      
-      // Get all users
-      const usersRef = collection(db, 'users');
-      const usersSnapshot = await getDocs(usersRef);
-      
-      const usersByUserId = {};
-      const usersByUid = {};
-      
-      usersSnapshot.docs.forEach(doc => {
-        const userData = doc.data();
-        usersByUserId[userData.userId] = { uid: doc.id, ...userData };
-        usersByUid[doc.id] = { userId: userData.userId, ...userData };
-      });
-      
-      console.log('✅ Users loaded:', Object.keys(usersByUserId).length);
-      
-      // Get ALL ISF members in my pillar
-      const myTeamList = [];
-      if (myPillar) {
-        Object.values(usersByUserId).forEach(userData => {
-          if (userData.layer === 'ISF' && userData.pillar === myPillar.pillarId) {
-            myTeamList.push({
-              id: userData.userId,
-              uid: userData.uid,
-              name: userData.displayName || userData.name || 'Unknown',
-              email: userData.email || '',
-              layer: 'ISF',
-              pillar: userData.pillar,
-              subPillar: userData.subPillar || '',
-              pillarId: myPillar.pillarId,
-              isSupervisor: userData.flags?.isSupervisor || false
-            });
-          }
-        });
-      }
-      
-      console.log('✅ All ISF members in pillar:', myTeamList.length);
-      
-      // Get ALL assessments
-      const assessmentsRef = collection(db, 'assessments');
-      const assessmentsSnapshot = await getDocs(assessmentsRef);
-      
-      console.log('✅ Total Assessments loaded:', assessmentsSnapshot.size);
-      
-      // Process assessments
-      const teamAssessmentsList = [];
-      const myAssessmentsList = [];
-      
-      assessmentsSnapshot.docs.forEach(doc => {
-        const assessment = {
-          id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate?.() || null,
-          completedAt: doc.data().completedAt?.toDate?.() || null,
-          hrpReviewedAt: doc.data().hrpReviewedAt?.toDate?.() || null
-        };
-        
-        // For My Team - show ALL assessments where subject is an ISF in my pillar
-        const teamMember = myTeamList.find(m => m.uid === assessment.subjectId);
-        if (teamMember) {
-          const assessorData = usersByUid[assessment.assessorId] || {};
-          const assessorName = assessment.assessorName || assessorData.displayName || 'Unknown';
-          
-          teamAssessmentsList.push({
-            ...assessment,
-            name: teamMember.name,
-            email: teamMember.email,
-            layer: teamMember.layer,
-            pillar: teamMember.pillar,
-            subPillar: teamMember.subPillar,
-            isSupervisor: teamMember.isSupervisor,
-            assessorName: assessorName,
-            isMyAssessment: assessment.assessorId === user.uid
-          });
-        }
-        
-        // For My Assessments: assessments where I'm the subject
-        if (assessment.subjectId === user.uid) {
-          const assessorData = usersByUid[assessment.assessorId] || {};
-          myAssessmentsList.push({
-            ...assessment,
-            assessorName: assessment.assessorName || assessorData.displayName || 'Unknown'
-          });
-        }
-      });
-      
-      setMyTeamAssessments(teamAssessmentsList);
-      setMyAssessments(myAssessmentsList);
-      
-      console.log('✅ My Team Assessments:', teamAssessmentsList.length);
-      console.log('✅ My Assessments:', myAssessmentsList.length);
-      
-      // Get MSH Scores for Personal KPI
-      const mshScoresRef = collection(db, 'mshScores');
-      const myScoresQuery = query(
-        mshScoresRef,
-        where('subjectId', '==', user.uid)
-      );
-      const mshScoresSnapshot = await getDocs(myScoresQuery);
-      
-      const myScoresList = mshScoresSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        publishedAt: doc.data().publishedAt?.toDate?.() || null
-      })).sort((a, b) => {
-        if (!a.publishedAt) return 1;
-        if (!b.publishedAt) return -1;
-        return b.publishedAt - a.publishedAt;
-      });
-      
-      setMyMSHScores(myScoresList);
-      console.log('✅ My MSH Scores:', myScoresList.length);
-      
-      // Calculate KPIs
-      calculateKPIs(teamAssessmentsList, myAssessmentsList, myScoresList, myTeamList.length);
-      
-      setLoading(false);
-    } catch (error) {
-      console.error('❌ Error fetching hub data:', error);
-      setLoading(false);
-    }
+  // Helper: Calculate average
+  const calcAvg = (scores) => {
+    if (!scores || scores.length === 0) return null;
+    const sum = scores.reduce((a, b) => a + b, 0);
+    return (sum / scores.length).toFixed(1);
   };
 
-  const calculateKPIs = (teamAssessments, myAssessments, mshScores, teamSize) => {
-    // KPI 1: Pillar Performance
-    // Both 'completed' and 'not-aligned' are terminal states - assessments are done
-    const completedTeamAssessments = teamAssessments.filter(a => 
-      (a.status === 'completed' || a.status === 'not-aligned') && 
-      a.composite !== null && 
-      a.composite !== undefined
-    );
+  // Helper: Get current cycle info
+  const getCycleInfo = (date = new Date()) => {
+    const monthsSinceStart = (date.getFullYear() - CYCLE_START_DATE.getFullYear()) * 12 + 
+                             (date.getMonth() - CYCLE_START_DATE.getMonth());
     
-    const pillarComposite = completedTeamAssessments.length > 0
-      ? (completedTeamAssessments.reduce((sum, a) => sum + a.composite, 0) / completedTeamAssessments.length).toFixed(1)
-      : null;
+    const cycleNumber = Math.floor(monthsSinceStart / 3) + 1;
+    const cycleMonth = (monthsSinceStart % 3) + 1;
+    const cycleType = cycleMonth === 3 ? '360' : '1x1';
     
-    // KPI 2: Leadership Composite (placeholder - need manager assessments of ISL)
-    const leadershipAssessments = myAssessments.filter(a => 
-      a.assessmentType === 'manager-down' && a.status === 'completed'
-    );
+    const currentMonth = date.toLocaleDateString('en-US', { 
+      month: 'long', 
+      year: 'numeric' 
+    }).toUpperCase();
     
-    const leadershipComposite = leadershipAssessments.length > 0
-      ? (leadershipAssessments.reduce((sum, a) => sum + (a.composite || 0), 0) / leadershipAssessments.length).toFixed(1)
-      : null;
-    
-    // KPI 3: Personal Performance (from MSH scores)
-    const latestScore = mshScores[0];
-    const personalComposite = latestScore?.composite || null;
-    const personalLatestCycle = latestScore 
-      ? `${latestScore.cycleMonth}/${latestScore.cycleYear}`
-      : null;
-    
-    setKpis({
-      pillarComposite,
-      pillarTrend: null, // Calculate trend later
-      isfMemberCount: teamSize,
-      totalPillarAssessments: completedTeamAssessments.length,
-      
-      leadershipComposite,
-      leadershipAssessmentCount: leadershipAssessments.length,
-      
-      personalComposite,
-      personalLatestCycle,
-      personalTotalScores: mshScores.length
-    });
+    return { cycleNumber, cycleMonth, cycleType, currentMonth };
+  };
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        
+        const now = new Date();
+        const currentMonth = now.getMonth() + 1;
+        const currentYear = now.getFullYear();
+        const cycleInfo = getCycleInfo(now);
+        
+        // Calculate previous month
+        const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+        const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+
+        // Fetch pillar info
+        const pillarsSnapshot = await getDocs(collection(db, 'pillars'));
+        const userPillar = pillarsSnapshot.docs.find(doc => 
+          doc.data().pillarLeaderId === user.uid
+        );
+
+        if (!userPillar) {
+          setLoading(false);
+          return;
+        }
+
+        const pillarData = userPillar.data();
+        setPillarInfo({
+          id: userPillar.id,
+          name: pillarData.pillarName,
+          color: pillarData.color
+        });
+
+        // Fetch all users
+        const usersSnapshot = await getDocs(collection(db, 'users'));
+        const userMap = {};
+        const islUsers = [];
+        const isfUsers = [];
+        const pillarISFUsers = [];
+        
+        usersSnapshot.docs.forEach(doc => {
+          const userData = { id: doc.id, ...doc.data() };
+          userMap[userData.userId] = userData;
+          
+          if (userData.layer === 'ISL') {
+            islUsers.push(userData);
+          } else if (userData.layer === 'ISF') {
+            isfUsers.push(userData);
+            if (userData.pillar === userPillar.id) {
+              pillarISFUsers.push(userData);
+            }
+          }
+        });
+
+        // Fetch MSH scores (for rolling averages)
+        const mshSnapshot = await getDocs(query(
+          collection(db, 'mshScores'),
+          where('publishedAt', '>=', Timestamp.fromDate(CYCLE_START_DATE))
+        ));
+
+        const allMSH = mshSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          publishedAt: doc.data().publishedAt?.toDate()
+        }));
+
+        // Group MSH scores
+        const orgMSH = allMSH;
+        const islMSH = allMSH.filter(m => islUsers.some(u => u.userId === m.subjectId));
+        const pillarMSH = allMSH.filter(m => pillarISFUsers.some(u => u.userId === m.subjectId));
+        const myMSH = allMSH.filter(m => m.subjectId === user.uid);
+
+        // Current month scores
+        const currentMonthOrg = orgMSH
+          .filter(m => m.cycleMonth === currentMonth && m.cycleYear === currentYear)
+          .map(m => m.composite);
+        
+        const currentMonthISL = islMSH
+          .filter(m => m.cycleMonth === currentMonth && m.cycleYear === currentYear)
+          .map(m => m.composite);
+        
+        const currentMonthPillar = pillarMSH
+          .filter(m => m.cycleMonth === currentMonth && m.cycleYear === currentYear)
+          .map(m => m.composite);
+        
+        const currentMonthMy = myMSH
+          .filter(m => m.cycleMonth === currentMonth && m.cycleYear === currentYear)
+          .map(m => m.composite);
+
+        // Previous month scores
+        const prevMonthOrg = orgMSH
+          .filter(m => m.cycleMonth === prevMonth && m.cycleYear === prevYear)
+          .map(m => m.composite);
+        
+        const prevMonthISL = islMSH
+          .filter(m => m.cycleMonth === prevMonth && m.cycleYear === prevYear)
+          .map(m => m.composite);
+        
+        const prevMonthPillar = pillarMSH
+          .filter(m => m.cycleMonth === prevMonth && m.cycleYear === prevYear)
+          .map(m => m.composite);
+        
+        const prevMonthMy = myMSH
+          .filter(m => m.cycleMonth === prevMonth && m.cycleYear === prevYear)
+          .map(m => m.composite);
+
+        // Rolling (YTD) scores
+        const rollingOrg = orgMSH.map(m => m.composite);
+        const rollingISL = islMSH.map(m => m.composite);
+        const rollingPillar = pillarMSH.map(m => m.composite);
+        const rollingMy = myMSH.map(m => m.composite);
+
+        // Calculate metrics with "---" fallback for trends
+        const isosCompass = calcAvg(currentMonthOrg);
+        const prevIsosCompass = calcAvg(prevMonthOrg);
+        const isosCompassTrend = (isosCompass && prevIsosCompass)
+          ? parseFloat((parseFloat(isosCompass) - parseFloat(prevIsosCompass)).toFixed(1))
+          : "---";
+        const isosCompassRolling = calcAvg(rollingOrg);
+
+        const islLeadership = calcAvg(currentMonthISL);
+        const prevIslLeadership = calcAvg(prevMonthISL);
+        const islLeadershipTrend = (islLeadership && prevIslLeadership)
+          ? parseFloat((parseFloat(islLeadership) - parseFloat(prevIslLeadership)).toFixed(1))
+          : "---";
+        const islLeadershipRolling = calcAvg(rollingISL);
+
+        const pillarHealth = calcAvg(currentMonthPillar);
+        const prevPillarHealth = calcAvg(prevMonthPillar);
+        const pillarHealthTrend = (pillarHealth && prevPillarHealth)
+          ? parseFloat((parseFloat(pillarHealth) - parseFloat(prevPillarHealth)).toFixed(1))
+          : "---";
+        const pillarHealthRolling = calcAvg(rollingPillar);
+
+        // My Compass - use latest score if no current month
+        const latestScore = myMSH.length > 0 
+          ? myMSH.sort((a, b) => b.publishedAt - a.publishedAt)[0]
+          : null;
+        
+        const myCompass = currentMonthMy.length > 0
+          ? calcAvg(currentMonthMy)
+          : latestScore?.composite?.toString() || null;
+        const prevMyComposite = calcAvg(prevMonthMy);
+        const myCompassTrend = (myCompass && prevMyComposite)
+          ? parseFloat((parseFloat(myCompass) - parseFloat(prevMyComposite)).toFixed(1))
+          : "---";
+        const myCompassRolling = calcAvg(rollingMy);
+
+        // Log calculated trends
+        console.log('📈 Calculated Trends:');
+        console.log(`ISOS Compass: ${isosCompass} (trend: ${isosCompassTrend})`);
+        console.log(`ISL Leadership: ${islLeadership} (trend: ${islLeadershipTrend})`);
+        console.log(`Pillar Health: ${pillarHealth} (trend: ${pillarHealthTrend})`);
+        console.log(`My Compass: ${myCompass} (trend: ${myCompassTrend})`);
+        
+        const myLatestCycle = latestScore 
+          ? `${latestScore.cycleMonth}/${latestScore.cycleYear}`
+          : null;
+
+        // Fetch current month assessments for grid
+        const assessmentsSnapshot = await getDocs(query(
+          collection(db, 'assessments'),
+          where('cycleMonth', '==', currentMonth),
+          where('cycleYear', '==', currentYear)
+        ));
+
+        const allAssessments = assessmentsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate(),
+          completedAt: doc.data().completedAt?.toDate()
+        }));
+
+        // My Team: assessments where I'm the assessor
+        const teamAssessments = allAssessments
+          .filter(a => a.assessorId === user.uid)
+          .map(a => {
+            const subject = userMap[a.subjectId];
+            return {
+              ...a,
+              name: subject?.displayName || 'Unknown',
+              email: subject?.email || '',
+              layer: subject?.layer || 'ISF',
+              pillar: subject?.pillar,
+              subPillar: subject?.subPillar,
+              isMyAssessment: true
+            };
+          });
+
+        // My Assessments: assessments where I'm the subject
+        const personalAssessments = allAssessments
+          .filter(a => a.subjectId === user.uid)
+          .map(a => {
+            const assessor = userMap[a.assessorId];
+            return {
+              ...a,
+              assessorName: assessor?.displayName || 'Unknown',
+              assessmentType: a.isSelfAssessment ? 'self' : 'manager-down'
+            };
+          });
+
+        setMyTeamAssessments(teamAssessments);
+        setMyAssessments(personalAssessments);
+        setMyMSHScores(myMSH);
+
+        // Count completed MSH scores
+        const completedCount = currentMonthOrg.length;
+        const totalCount = 24; // Expected per month (adjust based on org size)
+
+        setMetrics({
+          cycleNumber: cycleInfo.cycleNumber,
+          cycleType: cycleInfo.cycleType,
+          currentMonth: cycleInfo.currentMonth,
+          
+          isosCompass,
+          isosCompassTrend,
+          isosCompassRolling,
+          
+          islLeadership,
+          islLeadershipTrend,
+          islLeadershipRolling,
+          
+          pillarHealth,
+          pillarHealthTrend,
+          pillarHealthRolling,
+          
+          myCompass,
+          myCompassTrend,
+          myCompassRolling,
+          myLatestCycle,
+          
+          completedCount,
+          totalCount
+        });
+
+      } catch (error) {
+        console.error('Error fetching ISL hub data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [user.uid, location.key]);
+
+  const handleStartAssessment = (assessment) => {
+    navigate(`/is-os/assessments/${metrics.cycleType}/edit/${assessment.id}`);
   };
 
   const handleViewAssessment = (assessmentId) => {
     navigate(`/is-os/assessments/view/${assessmentId}`);
   };
 
-  const handleStartAssessment = (assessment) => {
-    console.log('🚀 Starting assessment:', assessment);
-    
-    if (!assessment || !assessment.id) {
-      console.error('❌ Invalid assessment');
-      return;
-    }
-    
-    if (!assessment.isMyAssessment && activeTab === 'team') {
-      if (assessment.id && (assessment.status === 'completed' || assessment.status === 'not-aligned')) {
-        handleViewAssessment(assessment.id);
-      }
-      return;
-    }
-    
-    const assessmentType = assessment.assessmentType || 'one-on-one';
-    const cycleType = assessment.cycleType || '1x1';
-    
-    if (assessmentType === 'self') {
-      navigate(`/is-os/assessments/self/edit/${assessment.id}`);
-    } else if (assessmentType === 'one-on-one' || cycleType === '1x1') {
-      navigate(`/is-os/assessments/1x1/edit/${assessment.id}`);
-    } else if (cycleType === '360') {
-      navigate(`/is-os/assessments/360/edit/${assessment.id}`);
-    } else {
-      navigate(`/is-os/assessments/1x1/edit/${assessment.id}`);
-    }
-  };
-
   const handleViewScore = (mshId) => {
-    navigate(`/is-os/scores/${mshId}`);
+    navigate(`/is-os/msh/${mshId}`);
   };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading ISL Hub...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading pillar data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!pillarInfo) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg shadow p-8 max-w-md text-center">
+          <h2 className="text-xl font-bold text-gray-900 mb-2">No Pillar Assigned</h2>
+          <p className="text-gray-600">
+            You don't appear to be assigned as a pillar leader. Please contact your administrator.
+          </p>
         </div>
       </div>
     );
@@ -282,147 +366,108 @@ function ISOSHubISL() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      
-      <div className="bg-gradient-to-r from-purple-600 via-blue-600 to-indigo-600 text-white">
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="flex items-center gap-3 mb-6">
-            <Zap className="w-10 h-10" />
-            <div>
-              <h1 className="text-5xl font-bold">IS OS Hub</h1>
-              <p className="text-blue-100 text-lg">
-                ISL View - {pillarInfo ? getPillarDisplayName(pillarInfo.pillarId) : 'My Pillar'}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Hero Banner */}
+      <HubHeroBanner
+        gradient="indigo"
+        title="ISOS Hub"
+        subtitle={`ISL View - ${pillarInfo.name} Leadership`}
+        icon={Building2}
+      />
+
+      {/* Metrics Bar */}
+      <HubMetricsBar
+        cycleNumber={metrics.cycleNumber}
+        cycleType={metrics.cycleType}
+        currentMonth={metrics.currentMonth}
+        completedCount={metrics.completedCount}
+        totalCount={metrics.totalCount}
+      />
 
       <div className="max-w-7xl mx-auto px-6 py-8">
         
-        {/* KPI StatCards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        {/* 4 KPI Stat Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           
-          {/* Card 1: Pillar Performance KPI */}
-          <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-2 border-blue-200">
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex-1">
-                <h3 className="text-sm font-medium text-gray-600 mb-1">Pillar Performance</h3>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-5xl font-bold text-gray-900">
-                    {kpis.pillarComposite || '—'}
-                  </span>
-                  <span className="text-sm text-gray-500 mb-2">/ 12</span>
-                </div>
-              </div>
-              <Target className="w-8 h-8 text-blue-600" />
-            </div>
-            
-            <div className="mt-4 pt-3 border-t border-blue-200">
-              <div className="text-sm font-semibold text-gray-900">
-                {kpis.isfMemberCount} ISF Members
-              </div>
-              <div className="text-xs text-gray-600 mt-1">
-                {kpis.totalPillarAssessments} completed assessments
-              </div>
-            </div>
-          </Card>
+          {/* ISOS Compass */}
+          <KPIStatCard
+            title="ISOS Compass"
+            value={metrics.isosCompass || "—"}
+            maxValue={12}
+            icon={Compass}
+            gradient="blue"
+            trend={metrics.isosCompassTrend}
+            trendLabel="vs last month"
+            metadata={[
+              { label: "YTD Avg", value: metrics.isosCompassRolling || "—" },
+              { label: "Org-Wide", value: "All Layers" }
+            ]}
+          />
 
-          {/* Card 2: Leadership KPI */}
-          <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200">
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex-1">
-                <h3 className="text-sm font-medium text-gray-600 mb-1">ISL Leadership</h3>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-5xl font-bold text-gray-900">
-                    {kpis.leadershipComposite || '—'}
-                  </span>
-                  <span className="text-sm text-gray-500 mb-2">/ 12</span>
-                </div>
-              </div>
-              <Award className="w-8 h-8 text-purple-600" />
-            </div>
-            
-            <div className="mt-4 pt-3 border-t border-purple-200">
-              <div className="text-sm font-semibold text-gray-900">
-                Leadership Performance
-              </div>
-              <div className="text-xs text-gray-600 mt-1">
-                {kpis.leadershipAssessmentCount} assessments
-              </div>
-            </div>
-          </Card>
+          {/* ISL Leadership */}
+          <KPIStatCard
+            title="ISL Leadership"
+            value={metrics.islLeadership || "—"}
+            maxValue={12}
+            icon={Award}
+            gradient="purple"
+            trend={metrics.islLeadershipTrend}
+            trendLabel="vs last month"
+            metadata={[
+              { label: "YTD Avg", value: metrics.islLeadershipRolling || "—" },
+              { label: "Layer", value: "ISL Health" }
+            ]}
+          />
 
-          {/* Card 3: Personal Performance KPI */}
-          <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200">
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex-1">
-                <h3 className="text-sm font-medium text-gray-600 mb-1">Personal Performance</h3>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-5xl font-bold text-gray-900">
-                    {kpis.personalComposite || '—'}
-                  </span>
-                  <span className="text-sm text-gray-500 mb-2">/ 12</span>
-                </div>
-              </div>
-              <User className="w-8 h-8 text-green-600" />
-            </div>
-            
-            <div className="mt-4 pt-3 border-t border-green-200">
-              <div className="text-sm font-semibold text-gray-900">
-                {kpis.personalLatestCycle || 'No scores yet'}
-              </div>
-              <div className="text-xs text-gray-600 mt-1">
-                {kpis.personalTotalScores} total MSH scores
-              </div>
-            </div>
-          </Card>
+          {/* Pillar Health */}
+          <KPIStatCard
+            title={`${pillarInfo.name} Health`}
+            value={metrics.pillarHealth || "—"}
+            maxValue={12}
+            icon={Building2}
+            gradient="green"
+            trend={metrics.pillarHealthTrend}
+            trendLabel="vs last month"
+            metadata={[
+              { label: "YTD Avg", value: metrics.pillarHealthRolling || "—" },
+              { label: "Pillar", value: pillarInfo.name }
+            ]}
+          />
+
+          {/* My Compass */}
+          <KPIStatCard
+            title="My Compass"
+            value={metrics.myCompass || "—"}
+            maxValue={12}
+            icon={User}
+            gradient="orange"
+            trend={metrics.myCompassTrend}
+            trendLabel="vs last month"
+            metadata={[
+              { label: "YTD Avg", value: metrics.myCompassRolling || "—" },
+              { label: "Latest", value: metrics.myLatestCycle || "N/A" }
+            ]}
+          />
 
         </div>
 
-        {/* Tabs */}
+        {/* Assessment Grids with Tabs */}
         <div className="mb-8">
-          <div className="border-b border-gray-200 mb-6">
-            <nav className="flex gap-8">
-              <button
-                onClick={() => setActiveTab('team')}
-                className={`pb-4 px-1 font-medium text-sm border-b-2 transition-colors ${
-                  activeTab === 'team'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                My Team ({myTeamAssessments.length})
-              </button>
-              <button
-                onClick={() => setActiveTab('myassessments')}
-                className={`pb-4 px-1 font-medium text-sm border-b-2 transition-colors ${
-                  activeTab === 'myassessments'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                My Assessments ({myAssessments.length})
-              </button>
-              <button
-                onClick={() => setActiveTab('scores')}
-                className={`pb-4 px-1 font-medium text-sm border-b-2 transition-colors ${
-                  activeTab === 'scores'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Published MSH Scores ({myMSHScores.length})
-              </button>
-            </nav>
-          </div>
+          <HubTabs
+            tabs={[
+              { id: 'team', label: 'My Team', count: myTeamAssessments.length },
+              { id: 'myassessments', label: 'My Assessments', count: myAssessments.length },
+              { id: 'msh', label: 'My MSH History', count: myMSHScores.length }
+            ]}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+          />
 
           {activeTab === 'team' && (
             <UnifiedAssessmentGrid
               assessments={myTeamAssessments}
               onStartAssessment={handleStartAssessment}
               onViewAssessment={handleViewAssessment}
-              showStartButton={true}
-              emptyStateMessage="No assessments found for your pillar members"
+              emptyStateMessage="No team assessments for current cycle"
               isMyAssessmentsTab={false}
               currentUserId={user.uid}
             />
@@ -433,18 +478,17 @@ function ISOSHubISL() {
               assessments={myAssessments}
               onStartAssessment={handleStartAssessment}
               onViewAssessment={handleViewAssessment}
-              showStartButton={true}
-              emptyStateMessage="No assessments found where you are the subject"
+              emptyStateMessage="No assessments assigned to you"
               isMyAssessmentsTab={true}
               currentUserId={user.uid}
             />
           )}
 
-          {activeTab === 'scores' && (
+          {activeTab === 'msh' && (
             <PublishedMSHScoresGrid
               mshScores={myMSHScores}
               onViewScore={handleViewScore}
-              emptyStateMessage="No published MSH scores found"
+              emptyStateMessage="No published MSH scores yet"
             />
           )}
         </div>

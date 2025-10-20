@@ -1,4 +1,4 @@
-// App.js - Complete with ALL role-based hub routing + Assessment Routes + HRP Review
+// App.js - Complete with Self-Assessment Route Added
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -24,7 +24,12 @@ import ISOSHubISFSupervisor from './pages/is-os/ISOSHubISFSupervisor';
 import AssessmentHistory from './pages/is-os/AssessmentHistory';
 import OneOnOneAssessGrid from './pages/is-os/1x1AssessGrid';
 import AssessmentDetailView from './pages/is-os/AssessmentDetailView';
-import HRPAssessmentReview from './pages/is-os/HRPAssessmentReview'; // NEW
+import HRPAssessmentReview from './pages/is-os/HRPAssessmentReview';
+import SelfAssessmentPage from './pages/is-os/SelfAssessmentPage';
+import ComparisonView360 from './pages/is-os/360ComparisonView'; // ✅ NEW IMPORT
+
+// Import ISOS Org Page
+import ISOSOrgPage from './pages/isos-org/ISOSOrgPage';
 
 // Hub router - routes users to correct hub based on layer/role
 function SimpleHubRouter() {
@@ -70,6 +75,52 @@ function SimpleHubRouter() {
 }
 
 function App() {
+  // CONSTRUCTION PAGE CHECK - Must be at the very top
+  if (process.env.REACT_APP_UNDER_CONSTRUCTION === 'true') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-blue-900 flex items-center justify-center p-4">
+        <div className="max-w-2xl w-full bg-white rounded-2xl shadow-2xl p-8 md:p-12 text-center">
+          <div className="mb-8">
+            <div className="flex items-center justify-center gap-2 mb-6">
+              <svg 
+                width="48" 
+                height="48" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="#3b82f6" 
+                strokeWidth="2.5" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+              >
+                <circle cx="6" cy="19" r="3"></circle>
+                <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"></path>
+                <circle cx="18" cy="5" r="3"></circle>
+              </svg>
+              <div className="text-left">
+                <h2 className="text-3xl font-bold text-gray-900" style={{ letterSpacing: '-0.02em' }}>
+                  MSH³
+                </h2>
+                <div className="text-xs text-gray-600 font-medium" style={{ letterSpacing: '0.3px' }}>
+                  <span className="font-bold">M</span>indset | <span className="font-bold">S</span>killset | <span className="font-bold">H</span>abits
+                </div>
+              </div>
+            </div>
+
+            <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+              Under Construction
+            </h1>
+            <p className="text-xl text-gray-600 mb-2">
+              We're MSH<sup>n</sup> at the speed of scale
+            </p>
+            <p className="text-gray-500">
+              working hard to bring you something amazing.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <AuthProvider>
       <Router>
@@ -95,18 +146,31 @@ function App() {
             {/* Quick Align */}
             <Route path="quick-align" element={<UnifiedAssessmentPage />} />
             
+            {/* ISOS Org */}
+            <Route path="isos-org" element={
+              <ProtectedRoute>
+                <ISOSOrgPage />
+              </ProtectedRoute>
+            } />
+            
             {/* Projects */}
             <Route path="projects" element={<ProjectsDashboardPage />} />
             
             {/* Assessment History */}
             <Route path="is-os/assessments/history" element={<AssessmentHistory />} />
             
-            {/* 1x1 Assessment Routes */}
+            {/* ✅ NEW: Self-Assessment Route */}
+            <Route path="is-os/self-assessment/:id" element={<SelfAssessmentPage />} />
+            
+            {/* 1x1 Assessment Routes - ID is now OPTIONAL */}
             <Route path="is-os/assessments/1x1/new" element={<OneOnOneAssessGrid />} />
-            <Route path="is-os/assessments/1x1/edit/:id" element={<OneOnOneAssessGrid />} />
+            <Route path="is-os/assessments/1x1/edit/:id?" element={<OneOnOneAssessGrid />} />
             <Route path="is-os/assessments/view/:id" element={<AssessmentDetailView />} />
             
-            {/* HRP Assessment Review Route - NEW */}
+            {/* 360 Assessment Routes - ID is OPTIONAL (for future 360s) */}
+            <Route path="is-os/assessments/360/edit/:id?" element={<OneOnOneAssessGrid />} />
+            
+            {/* HRP Assessment Review Route */}
             <Route path="is-os/assessments/hrp-review/:assessmentId" element={<HRPAssessmentReview />} />
             
             {/* Admin Panel (with tabs for Users and Database) */}

@@ -1,5 +1,5 @@
 // 📁 SAVE TO: src/pages/is-os/AssessmentHistory.jsx
-// FIXED VERSION - Improved freeze pane to match AssessmentCycleGrid
+// UPDATED - Now uses getHRPBadgeConfig for consistent "Review Complete" badges
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -13,6 +13,7 @@ import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
 import { useAuth } from '../../contexts/AuthContext';
 import { getPillarDisplayName, getSubPillarDisplayName, getTruncatedPillarName } from '../../utils/pillarHelpers';
+import { getHRPBadgeConfig } from '../../utils/hrpBadgeUtils';
 
 function AssessmentHistory() {
   const { user } = useAuth();
@@ -349,6 +350,8 @@ function AssessmentHistory() {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredAssessments.map((assessment) => {
                     const totals = calculateTotals(assessment.scores);
+                    const hrpBadgeConfig = getHRPBadgeConfig(assessment);
+                    const HRPBadgeIcon = hrpBadgeConfig?.icon;
                     
                     return (
                       <tr key={assessment.id} className="hover:bg-gray-50 transition-colors">
@@ -410,14 +413,13 @@ function AssessmentHistory() {
                         </td>
 
                         <td className="px-4 py-4 text-center">
-                          {assessment.hrpReviewedAt ? (
-                            <Badge variant="success" className="bg-green-100 text-green-800 text-xs">
-                              <CheckCircle className="w-3 h-3 mr-1" />
-                              Reviewed
-                            </Badge>
-                          ) : assessment.hrpRequested ? (
-                            <Badge variant="warning" className="bg-red-100 text-red-800 text-xs">
-                              Requested
+                          {hrpBadgeConfig ? (
+                            <Badge 
+                              variant={hrpBadgeConfig.variant}
+                              className={`text-xs ${hrpBadgeConfig.className}`}
+                            >
+                              {HRPBadgeIcon && <HRPBadgeIcon className="w-3 h-3 mr-1" />}
+                              {hrpBadgeConfig.text}
                             </Badge>
                           ) : (
                             <span className="text-gray-400">—</span>

@@ -1,7 +1,6 @@
 // 📁 SAVE TO: src/utils/CreateAssessmentCycles.js
-// 🎪 THE RINGLEADER - COMPLETE PRODUCTION FILE
-// Assessment Cycle Orchestration System with Admin Functions
-// ✅ FIXED: 25 Self-Assessments (MSH³ Participants Only)
+// 🎪 THE RINGLEADER - COMPLETE FILE WITH ISF SUPERVISOR FIX
+// Complete Assessment Cycle Orchestration System with ALL LEVELS
 
 import { db } from '../firebase';
 import { 
@@ -26,7 +25,7 @@ import {
 // ═══════════════════════════════════════════════════════════════
 
 export const createNextCycle = async (startYear = null, startMonth = null) => {
-  console.log('🎪 Ringleader starting...');
+  console.log('🎪 Ringleader starting with ISF Supervisor support...');
   
   try {
     const lastCycle = await getLastCycle();
@@ -237,7 +236,7 @@ const getDirectReports = async (managerUid, directReportIds) => {
 };
 
 // ═══════════════════════════════════════════════════════════════
-// 📝 ASSESSMENT CREATION - COMPLETE WITH ALL LEVELS
+// 📝 ASSESSMENT CREATION - COMPLETE WITH ISF SUPERVISOR SUPPORT
 // ═══════════════════════════════════════════════════════════════
 
 const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMonth) => {
@@ -265,27 +264,33 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
     
     if (is360Month) {
       // ═══════════════════════════════════════════════════════════
-      // 360 MONTH: Self + Bidirectional + P2P
+      // 360 MONTH: Self + Bidirectional (ALL LEVELS) + P2P
       // ═══════════════════════════════════════════════════════════
       
       const selfAssessmentMap = new Map();
       const allParticipants = new Set();
       
-      // Collect MSH³ participants ONLY (no sub-reports)
-      // ISE, ISL, ISF Supervisors + their DIRECT reports only
+      // Collect ALL participants recursively
       for (const manager of managers) {
-        allParticipants.add(manager); // Add the manager (ISE/ISL/ISF Supervisor)
+        allParticipants.add(manager);
         
         const directReports = await getDirectReports(manager.uid, manager.directReportIds);
         for (const report of directReports) {
-          allParticipants.add(report); // Add their direct reports (ISL/ISF)
-          // STOP HERE - no recursion into sub-reports
+          allParticipants.add(report);
+          
+          // Check if report has their own reports
+          if (report.directReportIds && report.directReportIds.length > 0) {
+            const subReports = await getDirectReports(report.uid, report.directReportIds);
+            for (const subReport of subReports) {
+              allParticipants.add(subReport);
+            }
+          }
         }
       }
       
-      console.log(`📊 Total 360 participants (MSH³): ${allParticipants.size} (Expected: 25)`);
+      console.log(`📊 Total 360 participants: ${allParticipants.size}`);
       
-      // STEP 1: Self-assessments for ALL MSH³ participants
+      // STEP 1: Self-assessments for ALL
       for (const participant of allParticipants) {
         const selfAssessmentId = `${participant.userId}-self-${cycleId}`;
         selfAssessmentMap.set(participant.userId, selfAssessmentId);
@@ -360,7 +365,7 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
       
       console.log(`✅ Created ${allParticipants.size} self-assessments`);
       
-      // STEP 2: Bidirectional pairs (ALL levels)
+      // STEP 2: Top-level bidirectional pairs
       for (const manager of managers) {
         const directReports = await getDirectReports(manager.uid, manager.directReportIds);
         
@@ -486,7 +491,7 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
           batchCount++;
           totalCount++;
           
-          // Link self-assessments to this pair
+          // Link self-assessments
           const reportSelfRef = doc(db, 'assessments', selfAssessmentMap.get(report.userId));
           const managerSelfRef = doc(db, 'assessments', selfAssessmentMap.get(manager.userId));
           
@@ -501,16 +506,20 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
         }
       }
       
-      console.log(`✅ Created bidirectional pairs`);
+      console.log(`✅ Created top-level 360 pairs`);
       
-      // STEP 3: ISF Supervisor ↔ ISF pairs
+      // STEP 3: ISF Supervisor ↔ ISF Contributor pairs
       const isfSupervisors = Array.from(allParticipants).filter(p => 
         p.directReportIds && p.directReportIds.length > 0 && 
         (p.layer === 'ISF' || p.role === 'ISF Supervisor')
       );
       
+      console.log(`📋 Processing ${isfSupervisors.length} ISF Supervisors for 360...`);
+      
       for (const supervisor of isfSupervisors) {
         const supervisorReports = await getDirectReports(supervisor.uid, supervisor.directReportIds);
+        
+        console.log(`  → ${supervisor.displayName} has ${supervisorReports.length} reports`);
         
         for (const report of supervisorReports) {
           const [userA, userB] = [supervisor.userId, report.userId].sort();
@@ -634,7 +643,7 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
           batchCount++;
           totalCount++;
           
-          // Link self-assessments to this pair
+          // Link self-assessments
           const reportSelfRef = doc(db, 'assessments', selfAssessmentMap.get(report.userId));
           const supervisorSelfRef = doc(db, 'assessments', selfAssessmentMap.get(supervisor.userId));
           
@@ -649,9 +658,9 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
         }
       }
       
-      console.log(`✅ Created ISF Supervisor pairs`);
+      console.log(`✅ Created ISF Supervisor ↔ ISF pairs`);
       
-      // STEP 4: P2P (ISL only)
+      // STEP 4: P2P
       const islManagers = managers.filter(m => m.role === 'ISL');
       
       for (const islAssessor of islManagers) {
@@ -719,7 +728,6 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
           batchCount++;
           totalCount++;
           
-          // Link self-assessment to this pair
           const subjectSelfRef = doc(db, 'assessments', selfAssessmentMap.get(islSubject.userId));
           batch.update(subjectSelfRef, { '360Pairs': arrayUnion(pairId) });
           
@@ -735,13 +743,14 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
         await batch.commit();
       }
       
-      console.log(`✅ Created ${totalCount} 360 assessments`);
+      console.log(`✅ Created ${totalCount} 360 assessments (ALL LEVELS)`);
       
     } else {
       // ═══════════════════════════════════════════════════════════
       // 1x1 MONTHS: Manager → Direct Report (ALL LEVELS)
       // ═══════════════════════════════════════════════════════════
       
+      // Top-level
       for (const manager of managers) {
         const directReports = await getDirectReports(manager.uid, manager.directReportIds);
         
@@ -808,243 +817,96 @@ const createAssessmentsForCycle = async (cycleIds, managers, startYear, startMon
         }
       }
       
+      // ISF Supervisor → ISF Contributor
+      const isfSupervisors = managers.filter(m => 
+        m.role === 'ISF Supervisor' || 
+        (m.role === 'ISF' && m.directReportIds && m.directReportIds.length > 0)
+      );
+      
+      console.log(`📋 Processing ${isfSupervisors.length} ISF Supervisors for 1x1...`);
+      
+      for (const supervisor of isfSupervisors) {
+        const supervisorReports = await getDirectReports(supervisor.uid, supervisor.directReportIds);
+        
+        console.log(`  → ${supervisor.displayName} has ${supervisorReports.length} reports`);
+        
+        for (const report of supervisorReports) {
+          const assessmentId = `${supervisor.userId}-${report.userId}-${cycleId}`;
+          const assessmentRef = doc(db, 'assessments', assessmentId);
+          
+          batch.set(assessmentRef, {
+            cycleId,
+            cycleName: `${getMonthName(monthNum)} ${yearNum}`,
+            cycleMonth: monthNum,
+            cycleYear: yearNum,
+            cycleType: '1x1',
+            assessmentType: 'one-on-one',
+            
+            giver: {
+              uid: supervisor.uid,
+              userId: supervisor.userId,
+              displayName: supervisor.displayName,
+              role: 'assessor',
+              layer: supervisor.role,
+              viewTab: 'give'
+            },
+            
+            receiver: {
+              uid: report.uid,
+              userId: report.userId,
+              displayName: report.displayName,
+              role: 'subject',
+              layer: report.layer,
+              viewTab: 'receive'
+            },
+            
+            impact: {
+              affectsMSH: report.uid,
+              mshCycle: `${yearNum}-${String(monthNum).padStart(2, '0')}`,
+              mshId: null,
+              weight: 1.0,
+              isSelfAssessment: false
+            },
+            
+            assessorId: supervisor.uid,
+            assessorName: supervisor.displayName,
+            subjectId: report.uid,
+            subjectName: report.displayName,
+            
+            status: 'pending',
+            composite: null,
+            scores: {},
+            notes: {},
+            
+            createdAt: serverTimestamp(),
+            dueDate: `${yearNum}-${String(monthNum).padStart(2, '0')}-${getLastDayOfMonth(monthNum, yearNum)}`
+          });
+          
+          batchCount++;
+          totalCount++;
+          
+          if (batchCount >= maxBatchSize) {
+            await batch.commit();
+            batch = writeBatch(db);
+            batchCount = 0;
+          }
+        }
+      }
+      
       if (batchCount > 0) {
         await batch.commit();
       }
       
-      console.log(`✅ Created ${totalCount} 1x1 assessments`);
+      console.log(`✅ Created ${totalCount} 1x1 assessments (ALL LEVELS)`);
     }
     
-    assessmentsByMonth[`${getMonthName(monthNum)} ${yearNum}`] = totalCount;
+    assessmentsByMonth[`${getMonthName(monthNum)} ${yearNum}`] = batchCount;
   }
   
   return {
     total: totalCount,
     byMonth: assessmentsByMonth
   };
-};
-
-// ═══════════════════════════════════════════════════════════════
-// 🔍 ADMIN QUERY FUNCTIONS
-// ═══════════════════════════════════════════════════════════════
-
-export const getLastCycle = async () => {
-  const cyclesRef = collection(db, 'assessmentCycles');
-  const q = query(cyclesRef, orderBy('year', 'desc'), orderBy('month', 'desc'), limit(1));
-  const snapshot = await getDocs(q);
-  if (snapshot.empty) return null;
-  const docSnap = snapshot.docs[0];
-  return { id: docSnap.id, ...docSnap.data() };
-};
-
-export const getAllCycles = async () => {
-  const cyclesRef = collection(db, 'assessmentCycles');
-  const snapshot = await getDocs(cyclesRef);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-};
-
-export const getActiveCycle = async () => {
-  const now = new Date();
-  const currentMonth = now.getMonth() + 1;
-  const currentYear = now.getFullYear();
-  const paddedMonth = String(currentMonth).padStart(2, '0');
-  const cycleId = `cycle-${currentYear}-${paddedMonth}`;
-  
-  const cycleDoc = await getDoc(doc(db, 'assessmentCycles', cycleId));
-  if (cycleDoc.exists()) {
-    return { id: cycleDoc.id, ...cycleDoc.data() };
-  }
-  return null;
-};
-
-export const getAssessmentCountPreview = async () => {
-  try {
-    const managers = await getAllManagers();
-    
-    let iseCount = 0;
-    let islCount = 0;
-    let isfSupervisorCount = 0;
-    let iseDirectReports = 0;
-    let islDirectReports = 0;
-    let isfSupervisorDirectReports = 0;
-    
-    const managerDetails = [];
-    
-    for (const manager of managers) {
-      const directReports = await getDirectReports(manager.uid, manager.directReportIds);
-      const drCount = directReports.length;
-      
-      if (manager.layer === 'ISE') {
-        iseCount++;
-        iseDirectReports += drCount;
-      } else if (manager.layer === 'ISL') {
-        islCount++;
-        islDirectReports += drCount;
-      } else if (manager.role === 'ISF Supervisor' || manager.layer === 'ISF') {
-        isfSupervisorCount++;
-        isfSupervisorDirectReports += drCount;
-      }
-      
-      managerDetails.push({
-        name: manager.displayName,
-        layer: manager.layer,
-        directReports: drCount
-      });
-    }
-    
-    const totalManagers = managers.length;
-    const totalDirectReports = iseDirectReports + islDirectReports + isfSupervisorDirectReports;
-    
-    // 1x1 calculations
-    const assessments1x1PerMonth = totalDirectReports;
-    const assessments1x1Total = assessments1x1PerMonth * 2;
-    
-    // 360 calculations (MSH³ participants only)
-    // Self-assessments for MSH³ participants: 25 (ISE:1 + ISL:5 + ISF:19)
-    const selfAssessments360 = 25; // Fixed: Only MSH³ participants get self-assessments
-    const managerDRPairs360 = totalDirectReports * 2; // Bidirectional pairs
-    const p2pAssessments360 = islCount * (islCount - 1); // ISL peer-to-peer
-    const total360Assessments = selfAssessments360 + managerDRPairs360 + p2pAssessments360;
-    
-    // MSH³ Expected
-    const msh1x1Expected = 48; // 24 per month × 2
-    const msh360Expected = 34; // 24 MR-DR + 10 P2P
-    const mshTotalExpected = 82;
-    
-    const grandTotalPerCycle = assessments1x1Total + total360Assessments;
-    
-    return {
-      success: true,
-      counts: {
-        iseCount,
-        islCount,
-        isfSupervisorCount,
-        iseDirectReports,
-        islDirectReports,
-        isfSupervisorDirectReports,
-        totalManagers,
-        totalDirectReports,
-        
-        assessments1x1PerMonth,
-        assessments1x1Total,
-        
-        selfAssessments360,
-        managerDRPairs360,
-        p2pAssessments360,
-        total360Assessments,
-        
-        msh1x1Expected,
-        msh360Expected,
-        mshTotalExpected,
-        
-        grandTotalPerCycle,
-        managers: managerDetails
-      }
-    };
-  } catch (error) {
-    console.error('Error in getAssessmentCountPreview:', error);
-    return { success: false, error: error.message };
-  }
-};
-
-export const getCycleValidationStats = async () => {
-  try {
-    const cyclesSnapshot = await getDocs(collection(db, 'assessmentCycles'));
-    const cycles = [];
-    let totalAssessments = 0;
-    let assessments1x1 = 0;
-    let assessments360 = 0;
-    let totalMshPublished = 0;
-    
-    const statusCounts = {
-      pending: 0,
-      completed: 0,
-      calibrated: 0
-    };
-    
-    for (const cycleDoc of cyclesSnapshot.docs) {
-      const cycleData = cycleDoc.data();
-      
-      // Get assessments for this cycle
-      const assessmentsQuery = query(
-        collection(db, 'assessments'),
-        where('cycleId', '==', cycleData.cycleId)
-      );
-      const assessmentsSnapshot = await getDocs(assessmentsQuery);
-      const assessmentCount = assessmentsSnapshot.size;
-      totalAssessments += assessmentCount;
-      
-      // Count by type
-      let cycle1x1Count = 0;
-      let cycle360Count = 0;
-      
-      assessmentsSnapshot.forEach(doc => {
-        const data = doc.data();
-        if (data.cycleType === '1x1') {
-          cycle1x1Count++;
-          assessments1x1++;
-        } else if (data.cycleType === '360') {
-          cycle360Count++;
-          assessments360++;
-        }
-        
-        // Count status
-        if (data.status === 'pending') statusCounts.pending++;
-        else if (data.status === 'completed') statusCounts.completed++;
-        else if (data.status === 'calibrated') statusCounts.calibrated++;
-      });
-      
-      // Get MSH scores for this cycle
-      const mshQuery = query(
-        collection(db, 'mshScores'),
-        where('cycleMonth', '==', cycleData.month),
-        where('cycleYear', '==', cycleData.year)
-      );
-      const mshSnapshot = await getDocs(mshQuery);
-      const mshPublishedCount = mshSnapshot.size;
-      totalMshPublished += mshPublishedCount;
-      
-      cycles.push({
-        cycleId: cycleData.cycleId,
-        monthName: cycleData.monthName,
-        year: cycleData.year,
-        month: cycleData.month,
-        cycleType: cycleData.cycleType,
-        cycleNumber: cycleData.cycleNumber,
-        assessmentCount,
-        cycle1x1Count,
-        cycle360Count,
-        mshPublishedCount
-      });
-    }
-    
-    return {
-      success: true,
-      stats: {
-        totalCycles: cycles.length,
-        totalAssessments,
-        assessments1x1,
-        assessments360,
-        totalMshPublished,
-        statusCounts,
-        cycles
-      }
-    };
-  } catch (error) {
-    console.error('Error in getCycleValidationStats:', error);
-    return { success: false, error: error.message };
-  }
-};
-
-export const closeCycle = async (cycleId) => {
-  await updateDoc(doc(db, 'assessmentCycles', cycleId), {
-    status: 'closed',
-    closedAt: serverTimestamp()
-  });
-};
-
-export const deleteCycle = async (cycleId) => {
-  await deleteDoc(doc(db, 'assessmentCycles', cycleId));
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -1070,3 +932,33 @@ function getCycleNumber(startMonth) {
 function getLastDayOfMonth(month, year) {
   return new Date(year, month, 0).getDate();
 }
+
+// ═══════════════════════════════════════════════════════════════
+// 🔍 QUERY & ADMIN FUNCTIONS
+// ═══════════════════════════════════════════════════════════════
+
+export const getLastCycle = async () => {
+  const cyclesRef = collection(db, 'assessmentCycles');
+  const q = query(cyclesRef, orderBy('year', 'desc'), orderBy('month', 'desc'), limit(1));
+  const snapshot = await getDocs(q);
+  if (snapshot.empty) return null;
+  const docSnap = snapshot.docs[0];
+  return { id: docSnap.id, ...docSnap.data() };
+};
+
+export const getAllCycles = async () => {
+  const cyclesRef = collection(db, 'assessmentCycles');
+  const snapshot = await getDocs(cyclesRef);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const closeCycle = async (cycleId) => {
+  await updateDoc(doc(db, 'assessmentCycles', cycleId), {
+    status: 'closed',
+    closedAt: serverTimestamp()
+  });
+};
+
+export const deleteCycle = async (cycleId) => {
+  await deleteDoc(doc(db, 'assessmentCycles', cycleId));
+};
