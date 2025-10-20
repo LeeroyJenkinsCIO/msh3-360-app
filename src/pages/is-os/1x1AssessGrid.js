@@ -1,6 +1,6 @@
 // 📁 SAVE TO: src/pages/is-os/1x1AssessGrid.js
 // ✅ FIXED: Block 360 assessments from creating MSH (only 360ComparisonView should create 360 MSH)
-// 1x1AssessGrid.js - Complete with Sequential MSH ID Counter
+// 🔍 DEBUG: Added logging to diagnose MSH creation issue in production
 
 import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
@@ -221,7 +221,7 @@ export default function OneOnOneAssessGrid() {
   const handlePublish = async (alignmentStatus) => {
     if (!selectedAssessment) return;
 
-    console.log('🔍 Publishing with alignment status:', alignmentStatus);
+    console.log('📝 Publishing with alignment status:', alignmentStatus);
 
     setSaving(true);
     try {
@@ -248,11 +248,22 @@ export default function OneOnOneAssessGrid() {
         updatedAt: serverTimestamp()
       };
 
-      console.log('🔍 Updating assessment with data:', updateData);
+      console.log('📝 Updating assessment with data:', updateData);
 
       await updateDoc(assessmentRef, updateData);
       
       console.log('✅ Assessment updated in Firestore with alignmentStatus:', alignmentStatus);
+      
+      // 🔍 DEBUG: Check all conditions before MSH creation
+      console.log('🔍 MSH Publish Check:', {
+        isSelfAssessment,
+        is360Assessment,
+        hasImpact: !!selectedAssessment.impact,
+        affectsMSH: selectedAssessment.impact?.affectsMSH,
+        receiverUid: selectedAssessment.receiver?.uid,
+        subjectId: selectedAssessment.subjectId,
+        willPublish: !isSelfAssessment && !is360Assessment && selectedAssessment.impact?.affectsMSH
+      });
       
       // ✅ CRITICAL FIX: Only create MSH for 1x1 assessments, NOT for 360 assessments
       if (!isSelfAssessment && !is360Assessment && selectedAssessment.impact?.affectsMSH) {
@@ -274,7 +285,11 @@ export default function OneOnOneAssessGrid() {
         console.log('🚫 360° assessment: MSH NOT published here (will be published from 360ComparisonView)');
         alert(`360° assessment completed successfully!\nAlignment: ${alignmentStatus}\n\nMSH will be published after alignment review.\n\nReturning to hub.`);
       } else {
-        alert(`Assessment published successfully!\nAlignment: ${alignmentStatus}\n\nReturning to hub.`);
+        console.warn('⚠️ MSH NOT created. Reasons:');
+        if (!selectedAssessment.impact?.affectsMSH) {
+          console.warn('  - Missing impact.affectsMSH field');
+        }
+        alert(`Assessment published successfully!\nAlignment: ${alignmentStatus}\n\nNote: MSH not created - check console for details.\n\nReturning to hub.`);
       }
       
       navigate('/is-os');
@@ -316,7 +331,7 @@ export default function OneOnOneAssessGrid() {
   // 📊 Publish MSH Score (only for 1x1 non-self assessments)
   const publishMshScore = async (assessment, composite, nineBoxPosition, alignmentStatus) => {
     try {
-      console.log('🔍 publishMshScore called with alignmentStatus:', alignmentStatus);
+      console.log('📝 publishMshScore called with alignmentStatus:', alignmentStatus);
       
       const affectsMSH = assessment?.impact?.affectsMSH;
       const cycleId = assessment?.cycleId;
@@ -379,7 +394,7 @@ export default function OneOnOneAssessGrid() {
         publishedAt: serverTimestamp()
       };
 
-      console.log('🔍 Creating MSH with data:', mshData);
+      console.log('📝 Creating MSH with data:', mshData);
 
       await addDoc(collection(db, 'mshScores'), mshData);
 
