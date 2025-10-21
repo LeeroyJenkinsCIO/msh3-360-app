@@ -1,4 +1,5 @@
-// App.js - Complete with ALL role-based hub routing
+// 📁 SAVE TO: src/App.js
+// App.js - Complete with Security Hardening
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -7,6 +8,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import MainLayout from './components/MainLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
+import UnderConstruction from './components/UnderConstruction';
 
 // Pages
 import AdminPage from './pages/admin/AdminPage';
@@ -22,15 +24,22 @@ import ISOSHubHRP from './pages/is-os/ISOSHubHRP';
 import ISOSHubISF from './pages/is-os/ISOSHubISF';
 import ISOSHubISFSupervisor from './pages/is-os/ISOSHubISFSupervisor';
 import AssessmentHistory from './pages/is-os/AssessmentHistory';
+import OneOnOneAssessGrid from './pages/is-os/1x1AssessGrid';
+import AssessmentDetailView from './pages/is-os/AssessmentDetailView';
+import HRPAssessmentReview from './pages/is-os/HRPAssessmentReview';
+import SelfAssessmentPage from './pages/is-os/SelfAssessmentPage';
+import ComparisonView360 from './pages/is-os/360ComparisonView';
+
+// Import ISOS Org Page
+import ISOSOrgPage from './pages/isos-org/ISOSOrgPage';
 
 // Hub router - routes users to correct hub based on layer/role
 function SimpleHubRouter() {
   const { user } = useAuth();
   
-  // Admin users - redirect to admin panel
-  if (user?.flags?.isAdmin || user?.role === 'admin') {
-    return <Navigate to="/admin" replace />;
-  }
+  // 🔒 SECURITY: Removed admin auto-redirect
+  // Admins now go to their assigned hub like everyone else
+  // They can manually navigate to /admin if needed
   
   // Supervisor users - show ISF Supervisor Hub (overrides layer)
   if (user?.flags?.isSupervisor) {
@@ -59,6 +68,11 @@ function SimpleHubRouter() {
       // In case layer is set to 'hrp' instead of using flags
       return <ISOSHubHRP />;
     
+    case 'admin':
+      // 🔒 SECURITY: Admins get ISE hub by default
+      // They must manually navigate to /admin
+      return <ISOSHubISE />;
+    
     default:
       // Fallback - show ISE Hub for unknown roles
       console.warn('Unknown user layer/role:', userLayer);
@@ -67,6 +81,11 @@ function SimpleHubRouter() {
 }
 
 function App() {
+  // 🚧 CONSTRUCTION PAGE CHECK - Must be at the very top
+  if (process.env.REACT_APP_UNDER_CONSTRUCTION === 'true') {
+    return <UnderConstruction />;
+  }
+
   return (
     <AuthProvider>
       <Router>
@@ -92,13 +111,37 @@ function App() {
             {/* Quick Align */}
             <Route path="quick-align" element={<UnifiedAssessmentPage />} />
             
+            {/* ISOS Org */}
+            <Route path="isos-org" element={
+              <ProtectedRoute>
+                <ISOSOrgPage />
+              </ProtectedRoute>
+            } />
+            
             {/* Projects */}
             <Route path="projects" element={<ProjectsDashboardPage />} />
             
             {/* Assessment History */}
             <Route path="is-os/assessments/history" element={<AssessmentHistory />} />
             
-            {/* Admin Panel (with tabs for Users and Database) */}
+            {/* Self-Assessment Route */}
+            <Route path="is-os/self-assessment/:id" element={<SelfAssessmentPage />} />
+            
+            {/* 1x1 Assessment Routes - ID is now OPTIONAL */}
+            <Route path="is-os/assessments/1x1/new" element={<OneOnOneAssessGrid />} />
+            <Route path="is-os/assessments/1x1/edit/:id?" element={<OneOnOneAssessGrid />} />
+            <Route path="is-os/assessments/view/:id" element={<AssessmentDetailView />} />
+            
+            {/* 360 Assessment Routes - ID is OPTIONAL (for future 360s) */}
+            <Route path="is-os/assessments/360/edit/:id?" element={<OneOnOneAssessGrid />} />
+            
+            {/* 360° Comparison View Route */}
+            <Route path="is-os/360-comparative/:pairId" element={<ComparisonView360 />} />
+            
+            {/* HRP Assessment Review Route */}
+            <Route path="is-os/hrp-assessment-review/:assessmentId" element={<HRPAssessmentReview />} />
+            
+            {/* 🔒 SECURITY: Admin Panel - Strict role check */}
             <Route path="admin" element={
               <ProtectedRoute requireRole="admin">
                 <AdminPage />
@@ -108,7 +151,7 @@ function App() {
             {/* Legacy route redirect - in case old links exist */}
             <Route path="admin/users" element={<Navigate to="/admin" replace />} />
             
-            {/* 404 */}
+            {/* 404 - Must be LAST */}
             <Route path="*" element={
               <div className="max-w-7xl mx-auto px-6 py-12">
                 <div className="bg-white rounded-lg shadow p-8 text-center">

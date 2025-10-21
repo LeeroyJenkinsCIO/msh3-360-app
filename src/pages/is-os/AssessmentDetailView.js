@@ -1,175 +1,53 @@
-// 📁 SAVE TO: src/pages/is-os/AssessmentHistory.jsx
-// ✅ FIXED: Self-assessments show "Supporting Data" instead of MSH ID
-// ✅ FIXED: Filter to hide/show self-assessments
-// ✅ FIXED: Better MSH ID display logic
+// 📁 SAVE TO: src/pages/is-os/AssessmentDetailView.js
+// ✅ READ-ONLY view of a completed assessment
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { collection, query, getDocs, orderBy } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { 
-  ArrowLeft, Eye, CheckCircle, AlertCircle, User, Shield
-} from 'lucide-react';
+import { ArrowLeft, Calendar, User, Award, CheckCircle, AlertCircle } from 'lucide-react';
 import Card from '../../components/ui/Card';
-import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
-import { useAuth } from '../../contexts/AuthContext';
-import { getPillarDisplayName, getSubPillarDisplayName, getTruncatedPillarName } from '../../utils/pillarHelpers';
-import { getHRPBadgeConfig } from '../../utils/hrpBadgeUtils';
+import AssessmentGrid from '../../components/AssessmentGrid';
 
-function AssessmentHistory() {
-  const { user } = useAuth();
+function AssessmentDetailView() {
+  const { id } = useParams();
   const navigate = useNavigate();
   
-  const [assessments, setAssessments] = useState([]);
+  const [assessment, setAssessment] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [filterType, setFilterType] = useState('all');
-  const [assesseeFilter, setAssesseeFilter] = useState('all');
-  const [assessorFilter, setAssessorFilter] = useState('all');
-  const [showSelfAssessments, setShowSelfAssessments] = useState(false); // ✅ NEW: Toggle for self-assessments
 
   useEffect(() => {
-    const fetchAssessments = async () => {
-      try {
-        setLoading(true);
-        
-        const assessmentsRef = collection(db, 'assessments');
-        const assessmentsQuery = query(
-          assessmentsRef,
-          orderBy('completedAt', 'desc')
-        );
-        
-        const snapshot = await getDocs(assessmentsQuery);
-        
-        const usersRef = collection(db, 'users');
-        const usersSnapshot = await getDocs(usersRef);
-        const usersMap = {};
-        usersSnapshot.docs.forEach(doc => {
-          const userData = doc.data();
-          usersMap[userData.userId] = userData;
-        });
-        
-        const assessmentsList = [];
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          const subjectData = usersMap[data.subjectId] || {};
-          const assessorData = usersMap[data.assessorId] || {};
-          
-          assessmentsList.push({
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt?.toDate?.() || null,
-            completedAt: data.completedAt?.toDate?.() || null,
-            hrpReviewedAt: data.hrpReviewedAt?.toDate?.() || null,
-            subjectName: data.subjectName || subjectData.displayName || 'Unknown',
-            subjectPillar: subjectData.pillar || data.subjectPillar || 'Unassigned',
-            subjectSubPillar: subjectData.subPillar || data.subjectSubPillar || '',
-            subjectLayer: subjectData.layer || data.subjectLayer || 'Unknown',
-            assessorName: data.assessorName || assessorData.displayName || 'Unknown',
-            // ✅ NEW: Flag self-assessments clearly
-            isSelf: data.assessmentType === 'self' || data.isSelfAssessment || data.assessorId === data.subjectId
-          });
-        });
-        
-        setAssessments(assessmentsList);
-      } catch (error) {
-        console.error('Error fetching assessments:', error);
-      } finally {
-        setLoading(false);
+    fetchAssessment();
+  }, [id]);
+
+  const fetchAssessment = async () => {
+    try {
+      setLoading(true);
+      
+      const assessmentRef = doc(db, 'assessments', id);
+      const assessmentSnap = await getDoc(assessmentRef);
+      
+      if (!assessmentSnap.exists()) {
+        alert('Assessment not found');
+        navigate('/is-os/assessments/history');
+        return;
       }
-    };
-
-    fetchAssessments();
-  }, []);
-
-  const handleViewAssessment = (assessment) => {
-    if (assessment.isSelf) {
-      navigate(`/is-os/self-assessment/${assessment.id}`);
-    } else if (assessment.hrpReviewedAt || (user?.role === 'hrp' && assessment.hrpRequested)) {
-      navigate(`/is-os/assessments/hrp-review/${assessment.id}`);
-    } else {
-      navigate(`/is-os/assessments/view/${assessment.id}`);
-    }
-  };
-
-  const filterCounts = useMemo(() => {
-    // ✅ FIXED: Don't count self-assessments unless showSelfAssessments is true
-    const filteredByType = showSelfAssessments ? assessments : assessments.filter(a => !a.isSelf);
-    
-    const counts = {
-      all: filteredByType.length,
-      aligned: 0,
-      notAligned: 0,
-      hrpRequests: 0,
-      selfAssessments: assessments.filter(a => a.isSelf).length // Count of self-assessments
-    };
-
-    filteredByType.forEach(a => {
-      const isAligned = a.alignmentStatus === 'aligned' || a.status === 'completed';
-      const isNotAligned = a.alignmentStatus === 'not-aligned' || 
-                           a.status === 'not-aligned' ||
-                           (!a.alignmentStatus && a.status !== 'completed' && a.status !== 'draft');
       
-      if (isAligned) counts.aligned++;
-      else if (isNotAligned) counts.notAligned++;
-      
-      if (a.hrpRequested) counts.hrpRequests++;
-    });
-
-    return counts;
-  }, [assessments, showSelfAssessments]);
-
-  const uniqueAssessees = useMemo(() => {
-    const filtered = showSelfAssessments ? assessments : assessments.filter(a => !a.isSelf);
-    const names = [...new Set(filtered.map(a => a.subjectName))].sort();
-    return names;
-  }, [assessments, showSelfAssessments]);
-
-  const uniqueAssessors = useMemo(() => {
-    const filtered = showSelfAssessments ? assessments : assessments.filter(a => !a.isSelf);
-    const names = [...new Set(filtered.map(a => a.assessorName))].sort();
-    return names;
-  }, [assessments, showSelfAssessments]);
-
-  const getFilteredAssessments = () => {
-    // ✅ FIXED: Filter out self-assessments unless explicitly shown
-    let filtered = showSelfAssessments ? assessments : assessments.filter(a => !a.isSelf);
-
-    if (filterType === 'aligned') {
-      filtered = filtered.filter(a => a.alignmentStatus === 'aligned' || a.status === 'completed');
-    } else if (filterType === 'not-aligned') {
-      filtered = filtered.filter(a => 
-        a.alignmentStatus === 'not-aligned' || 
-        a.status === 'not-aligned' ||
-        (!a.alignmentStatus && a.status !== 'completed' && a.status !== 'draft')
-      );
-    } else if (filterType === 'hrp-requests') {
-      filtered = filtered.filter(a => a.hrpRequested);
+      const data = assessmentSnap.data();
+      setAssessment({
+        id: assessmentSnap.id,
+        ...data,
+        completedAt: data.completedAt?.toDate?.() || null,
+        createdAt: data.createdAt?.toDate?.() || null
+      });
+    } catch (error) {
+      console.error('Error fetching assessment:', error);
+      alert('Error loading assessment: ' + error.message);
+      navigate('/is-os/assessments/history');
+    } finally {
+      setLoading(false);
     }
-
-    if (assesseeFilter !== 'all') {
-      filtered = filtered.filter(a => a.subjectName === assesseeFilter);
-    }
-
-    if (assessorFilter !== 'all') {
-      filtered = filtered.filter(a => a.assessorName === assessorFilter);
-    }
-
-    return filtered;
-  };
-
-  const calculateTotals = (scores) => {
-    if (!scores) return { totalContribution: 0, totalGrowth: 0 };
-    
-    const contribution = (scores.culture?.contribution || 0) + 
-                        (scores.competencies?.contribution || 0) + 
-                        (scores.execution?.contribution || 0);
-    
-    const growth = (scores.culture?.growth || 0) + 
-                  (scores.competencies?.growth || 0) + 
-                  (scores.execution?.growth || 0);
-    
-    return { totalContribution: contribution, totalGrowth: growth };
   };
 
   if (loading) {
@@ -177,356 +55,250 @@ function AssessmentHistory() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading assessments...</p>
+          <p className="text-gray-600">Loading assessment...</p>
         </div>
       </div>
     );
   }
 
-  const filteredAssessments = getFilteredAssessments();
+  if (!assessment) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <p className="text-gray-600 text-lg mb-4">Assessment not found</p>
+          <button
+            onClick={() => navigate('/is-os/assessments/history')}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Back to History
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const isSelfAssessment = assessment.assessmentType === 'self' || assessment.isSelfAssessment;
+  const is360Assessment = assessment.cycleType === '360';
 
   return (
     <div className="min-h-screen bg-gray-50">
       
+      {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
         <div className="max-w-7xl mx-auto px-6 py-8">
           <button
-            onClick={() => navigate('/is-os')}
+            onClick={() => navigate('/is-os/assessments/history')}
             className="flex items-center gap-2 text-white/80 hover:text-white mb-4 transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
-            Back to ISOS Hub
+            Back to History
           </button>
           
-          <h1 className="text-3xl font-bold mb-2">Assessment History</h1>
-          <p className="text-blue-100">
-            View and manage completed performance assessments
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold mb-2">
+                {isSelfAssessment ? 'Self Assessment' : `Assessment: ${assessment.subjectName || 'Unknown'}`}
+              </h1>
+              <p className="text-blue-100">
+                {assessment.cycleName || 'Assessment'} • 
+                {assessment.completedAt?.toLocaleDateString('en-US', { 
+                  month: 'long', 
+                  day: 'numeric', 
+                  year: 'numeric' 
+                })}
+              </p>
+            </div>
+            
+            <div className="text-right">
+              <div className="text-6xl font-bold mb-1">{assessment.composite || 0}</div>
+              <div className="text-blue-100 text-sm">Composite Score / 12</div>
+            </div>
+          </div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
         
-        <Card className="mb-6">
-          <div className="space-y-4">
-            
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setFilterType('all')}
-                  className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                    filterType === 'all'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  All ({filterCounts.all})
-                </button>
-                <button
-                  onClick={() => setFilterType('aligned')}
-                  className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                    filterType === 'aligned'
-                      ? 'bg-green-600 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  Aligned ({filterCounts.aligned})
-                </button>
-                <button
-                  onClick={() => setFilterType('not-aligned')}
-                  className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                    filterType === 'not-aligned'
-                      ? 'bg-orange-600 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  Not Aligned ({filterCounts.notAligned})
-                </button>
-                <button
-                  onClick={() => setFilterType('hrp-requests')}
-                  className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                    filterType === 'hrp-requests'
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  HRP Requests ({filterCounts.hrpRequests})
-                </button>
-              </div>
-              
-              {/* ✅ NEW: Toggle for Self-Assessments */}
-              <div className="flex items-center gap-2">
-                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={showSelfAssessments}
-                    onChange={(e) => setShowSelfAssessments(e.target.checked)}
-                    className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
-                  />
-                  <User className="w-4 h-4 text-purple-600" />
-                  <span className="font-medium">Show Self-Assessments ({filterCounts.selfAssessments})</span>
-                </label>
-              </div>
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          
+          <Card>
+            <div className="text-center">
+              <div className="text-sm text-gray-600 mb-2">Nine-Box Position</div>
+              <Badge variant="secondary" className="text-lg px-4 py-2">
+                {assessment.nineBoxPosition || 'Status Quo'}
+              </Badge>
             </div>
+          </Card>
 
-            <div className="flex items-center gap-4">
-              <div className="flex-1 max-w-xs">
-                <label className="block text-xs font-medium text-gray-500 uppercase mb-1">
-                  Filter by Assessee
-                </label>
-                <select
-                  value={assesseeFilter}
-                  onChange={(e) => setAssesseeFilter(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                >
-                  <option value="all">All Assessees</option>
-                  {uniqueAssessees.map(name => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex-1 max-w-xs">
-                <label className="block text-xs font-medium text-gray-500 uppercase mb-1">
-                  Filter by Assessor
-                </label>
-                <select
-                  value={assessorFilter}
-                  onChange={(e) => setAssessorFilter(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                >
-                  <option value="all">All Assessors</option>
-                  {uniqueAssessors.map(name => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
-              </div>
+          <Card>
+            <div className="text-center">
+              <div className="text-sm text-gray-600 mb-2">Alignment Status</div>
+              {assessment.alignmentStatus === 'aligned' || assessment.status === 'completed' ? (
+                <Badge variant="success" className="text-lg px-4 py-2">
+                  <CheckCircle className="w-5 h-5 mr-2" />
+                  Aligned
+                </Badge>
+              ) : (
+                <Badge variant="warning" className="text-lg px-4 py-2">
+                  <AlertCircle className="w-5 h-5 mr-2" />
+                  Not Aligned
+                </Badge>
+              )}
             </div>
-          </div>
-        </Card>
+          </Card>
 
-        <div className="mb-4">
-          <p className="text-sm text-gray-600">
-            Showing {filteredAssessments.length} of {showSelfAssessments ? assessments.length : assessments.filter(a => !a.isSelf).length} assessments
-            {(filterType !== 'all' || assesseeFilter !== 'all' || assessorFilter !== 'all') && (
-              <span className="text-blue-600 ml-1">(filtered)</span>
-            )}
-          </p>
+          <Card>
+            <div className="text-center">
+              <div className="text-sm text-gray-600 mb-2">Assessment Type</div>
+              <Badge variant="secondary" className="text-lg px-4 py-2">
+                {isSelfAssessment ? 'Self Assessment' : is360Assessment ? '360°' : '1x1'}
+              </Badge>
+            </div>
+          </Card>
+
         </div>
 
-        {filteredAssessments.length === 0 ? (
-          <Card className="text-center py-12">
-            <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">No Assessments Found</h3>
-            <p className="text-gray-600">
-              {filterType !== 'all' || assesseeFilter !== 'all' || assessorFilter !== 'all'
-                ? 'Try adjusting your filter criteria'
-                : 'No assessments have been completed yet'}
-            </p>
-          </Card>
-        ) : (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full">
-                <thead className="bg-gray-50 sticky top-0 z-10">
-                  <tr>
-                    <th className="sticky left-0 z-20 bg-gray-50 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200" style={{minWidth: '100px'}}>
-                      Action
-                    </th>
-                    <th className="sticky left-[100px] z-20 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r border-gray-200" style={{minWidth: '150px'}}>
-                      MSH ID
-                    </th>
-                    <th className="sticky left-[250px] z-20 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-r-4 border-blue-400" style={{minWidth: '200px'}}>
-                      Assessee
-                    </th>
+        {/* Assessment Grid - Read Only */}
+        <Card className="mb-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Assessment Scores</h2>
+          <AssessmentGrid 
+            scores={assessment.scores || {
+              culture: { contribution: 1, growth: 1 },
+              competencies: { contribution: 1, growth: 1 },
+              execution: { contribution: 1, growth: 1 }
+            }}
+            onScoreChange={() => {}} // Read-only, no changes allowed
+            readOnly={true}
+          />
+        </Card>
 
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
-                      Assessor
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
-                      Type
-                    </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
-                      Nine-Box
-                    </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
-                      Status
-                    </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
-                      HRP
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
-                      Pillar
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
-                      Sub Pillar
-                    </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
-                      Composite
-                    </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
-                      Contrib
-                    </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
-                      Growth
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50">
-                      Date
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredAssessments.map((assessment) => {
-                    const totals = calculateTotals(assessment.scores);
-                    const hrpBadgeConfig = getHRPBadgeConfig(assessment);
-                    const HRPBadgeIcon = hrpBadgeConfig?.icon;
-                    
-                    return (
-                      <tr 
-                        key={assessment.id} 
-                        className={`hover:bg-gray-50 transition-colors ${assessment.isSelf ? 'bg-purple-50/30' : ''}`}
-                      >
-                        
-                        <td className="sticky left-0 z-10 bg-white px-4 py-4 text-center border-r border-gray-200 hover:bg-gray-50" style={{minWidth: '100px'}}>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => handleViewAssessment(assessment)}
-                          >
-                            <Eye className="w-4 h-4 mr-1" />
-                            View
-                          </Button>
-                        </td>
+        {/* Assessment Notes */}
+        {assessment.notes && (
+          <Card className="mb-8">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Assessment Notes</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+              
+              <div>
+                <label className="block text-sm font-bold mb-2 text-purple-700">
+                  Culture Notes
+                </label>
+                <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-3 text-sm text-gray-700 min-h-[100px]">
+                  {assessment.notes.culture || 'No notes provided'}
+                </div>
+              </div>
 
-                        {/* ✅ FIXED: MSH ID Column with Self-Assessment Logic */}
-                        <td className={`sticky left-[100px] z-10 px-4 py-4 whitespace-nowrap border-r border-gray-200 hover:bg-gray-50 ${assessment.isSelf ? 'bg-purple-50/30' : 'bg-white'}`} style={{minWidth: '150px'}}>
-                          {assessment.isSelf ? (
-                            <div className="flex items-center gap-1 text-xs text-purple-600">
-                              <Shield className="w-3 h-3" />
-                              <span className="font-medium">Supporting Data</span>
-                            </div>
-                          ) : assessment.impact?.mshId ? (
-                            <span className="text-sm font-mono font-semibold text-indigo-600">
-                              {assessment.impact.mshId}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400 text-sm">—</span>
-                          )}
-                        </td>
+              <div>
+                <label className="block text-sm font-bold mb-2 text-orange-700">
+                  Competencies Notes
+                </label>
+                <div className="bg-orange-50 border-2 border-orange-200 rounded-lg p-3 text-sm text-gray-700 min-h-[100px]">
+                  {assessment.notes.competencies || 'No notes provided'}
+                </div>
+              </div>
 
-                        <td className={`sticky left-[250px] z-10 px-4 py-4 whitespace-nowrap border-r-4 border-blue-400 hover:bg-gray-50 ${assessment.isSelf ? 'bg-purple-50/30' : 'bg-white'}`} style={{minWidth: '200px'}}>
-                          <div className="text-sm font-medium text-gray-900">{assessment.subjectName}</div>
-                          <div className="text-xs text-gray-500">{assessment.subjectLayer}</div>
-                        </td>
+              <div>
+                <label className="block text-sm font-bold mb-2 text-green-700">
+                  Execution Notes
+                </label>
+                <div className="bg-green-50 border-2 border-green-200 rounded-lg p-3 text-sm text-gray-700 min-h-[100px]">
+                  {assessment.notes.execution || 'No notes provided'}
+                </div>
+              </div>
 
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{assessment.assessorName}</div>
-                        </td>
-
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          {assessment.isSelf ? (
-                            <Badge variant="secondary" className="bg-purple-100 text-purple-700 border-purple-300 text-xs">
-                              <User className="w-3 h-3 mr-1" />
-                              SELF
-                            </Badge>
-                          ) : (
-                            <Badge variant="secondary" className="text-xs">
-                              {assessment.cycleType === '360' ? '360°' : '1x1'}
-                            </Badge>
-                          )}
-                        </td>
-
-                        <td className="px-4 py-4 text-center">
-                          {assessment.nineBoxPosition ? (
-                            <Badge variant="secondary" className="text-xs whitespace-nowrap">
-                              {assessment.nineBoxPosition}
-                            </Badge>
-                          ) : (
-                            <span className="text-gray-400">—</span>
-                          )}
-                        </td>
-
-                        <td className="px-4 py-4 text-center">
-                          {assessment.alignmentStatus === 'aligned' || assessment.status === 'completed' ? (
-                            <Badge variant="success" className="text-xs">
-                              <CheckCircle className="w-3 h-3 mr-1" />
-                              Aligned
-                            </Badge>
-                          ) : (
-                            <Badge variant="warning" className="text-xs">
-                              <AlertCircle className="w-3 h-3 mr-1" />
-                              Not Aligned
-                            </Badge>
-                          )}
-                        </td>
-
-                        <td className="px-4 py-4 text-center">
-                          {hrpBadgeConfig ? (
-                            <Badge 
-                              variant={hrpBadgeConfig.variant}
-                              className={`text-xs ${hrpBadgeConfig.className}`}
-                            >
-                              {HRPBadgeIcon && <HRPBadgeIcon className="w-3 h-3 mr-1" />}
-                              {hrpBadgeConfig.text}
-                            </Badge>
-                          ) : (
-                            <span className="text-gray-400">—</span>
-                          )}
-                        </td>
-
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <div 
-                            className="text-sm text-gray-900 font-mono font-semibold cursor-help" 
-                            title={getPillarDisplayName(assessment.subjectPillar)}
-                          >
-                            {getTruncatedPillarName(assessment.subjectPillar)}
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-500">
-                            {getSubPillarDisplayName(assessment.subjectSubPillar || assessment.subPillar)}
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-4 whitespace-nowrap text-center">
-                          <span className="text-lg font-bold text-blue-600">
-                            {assessment.composite || 0}
-                          </span>
-                          <span className="text-xs text-gray-500">/12</span>
-                        </td>
-
-                        <td className="px-4 py-4 whitespace-nowrap text-center">
-                          <span className="text-sm font-semibold text-orange-600">
-                            {totals.totalContribution}
-                          </span>
-                          <span className="text-xs text-gray-500">/6</span>
-                        </td>
-
-                        <td className="px-4 py-4 whitespace-nowrap text-center">
-                          <span className="text-sm font-semibold text-green-600">
-                            {totals.totalGrowth}
-                          </span>
-                          <span className="text-xs text-gray-500">/6</span>
-                        </td>
-
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {assessment.completedAt?.toLocaleDateString('en-US', { 
-                              month: 'short', 
-                              day: 'numeric', 
-                              year: 'numeric' 
-                            })}
-                          </div>
-                        </td>
-
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
             </div>
-          </div>
+
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">
+                General Notes / Overall Comments
+              </label>
+              <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-3 text-sm text-gray-700 min-h-[100px]">
+                {assessment.notes.general || 'No general notes provided'}
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Assessment Metadata */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          <Card>
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Assessment Details</h3>
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Assessee</span>
+                <span className="font-semibold text-gray-900">{assessment.subjectName || 'Unknown'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Assessor</span>
+                <span className="font-semibold text-gray-900">{assessment.assessorName || 'Unknown'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Type</span>
+                <Badge variant="secondary">
+                  {isSelfAssessment ? 'Self' : is360Assessment ? '360°' : '1x1'}
+                </Badge>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Cycle</span>
+                <span className="font-semibold text-gray-900">{assessment.cycleName || 'N/A'}</span>
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Scores Summary</h3>
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Total Contribution</span>
+                <span className="text-2xl font-bold text-orange-600">
+                  {(assessment.scores?.culture?.contribution || 0) + 
+                   (assessment.scores?.competencies?.contribution || 0) + 
+                   (assessment.scores?.execution?.contribution || 0)}/6
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Total Growth</span>
+                <span className="text-2xl font-bold text-green-600">
+                  {(assessment.scores?.culture?.growth || 0) + 
+                   (assessment.scores?.competencies?.growth || 0) + 
+                   (assessment.scores?.execution?.growth || 0)}/6
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Composite</span>
+                <span className="text-2xl font-bold text-blue-600">
+                  {assessment.composite || 0}/12
+                </span>
+              </div>
+            </div>
+          </Card>
+
+        </div>
+
+        {/* MSH Info if available */}
+        {assessment.impact?.mshId && (
+          <Card className="mt-6 bg-indigo-50 border-2 border-indigo-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Award className="w-8 h-8 text-indigo-600" />
+                <div>
+                  <p className="font-semibold text-indigo-900">Published MSH Score</p>
+                  <p className="text-sm text-indigo-700">
+                    MSH ID: <span className="font-mono font-bold">{assessment.impact.mshId}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => navigate(`/is-os/msh/${assessment.impact.mshId}`)}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+              >
+                View MSH
+              </button>
+            </div>
+          </Card>
         )}
 
       </div>
@@ -534,4 +306,4 @@ function AssessmentHistory() {
   );
 }
 
-export default AssessmentHistory;
+export default AssessmentDetailView;

@@ -1,69 +1,30 @@
+// 📁 src/pages/is-os/ISOSHub.js
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle, Shield, Users, User, Construction } from 'lucide-react';
+import { AlertCircle, Shield, Users, User } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+
+// ✅ IMPORT ALL REAL HUB COMPONENTS
 import ISOSHubISE from './ISOSHubISE';
-// import ISOSHubISL from './ISOSHubISL'; // TODO: Create this component
-// import ISOSHubISF from './ISOSHubISF'; // TODO: Create this component
+import ISOSHubISL from './ISOSHubISL';
+import ISOSHubISF from './ISOSHubISF';
+import ISOSHubISFSupervisor from './ISOSHubISFSupervisor';
+import ISOSHubHRP from './ISOSHubHRP';
 
-/**
- * Temporary placeholder component for ISL/Supervisor view
- * Shows "Coming Soon" message until full component is built
- */
-const ISOSHubISL = () => (
-  <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-    <div className="bg-white p-8 rounded-lg shadow-lg max-w-md text-center">
-      <Construction className="w-16 h-16 text-blue-600 mx-auto mb-4" />
-      <h2 className="text-2xl font-bold text-gray-900 mb-2">ISL Hub View</h2>
-      <p className="text-gray-600 mb-4">
-        Pillar Leader and Supervisor dashboard coming soon!
-      </p>
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-left text-sm">
-        <p className="font-semibold text-blue-900 mb-2">This view will show:</p>
-        <ul className="list-disc list-inside text-blue-800 space-y-1">
-          <li>Your direct reports</li>
-          <li>Start 1x1 assessments</li>
-          <li>Pillar/sub-pillar metrics</li>
-          <li>Team performance tracking</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-);
-
-/**
- * Temporary placeholder component for ISF view
- * Shows "Coming Soon" message until full component is built
- */
-const ISOSHubISF = () => (
-  <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-    <div className="bg-white p-8 rounded-lg shadow-lg max-w-md text-center">
-      <Construction className="w-16 h-16 text-green-600 mx-auto mb-4" />
-      <h2 className="text-2xl font-bold text-gray-900 mb-2">ISF Hub View</h2>
-      <p className="text-gray-600 mb-4">
-        Individual Contributor dashboard coming soon!
-      </p>
-      <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-left text-sm">
-        <p className="font-semibold text-green-900 mb-2">This view will show:</p>
-        <ul className="list-disc list-inside text-green-800 space-y-1">
-          <li>Your assessment history</li>
-          <li>Current composite score</li>
-          <li>Nine-box position</li>
-          <li>Alignment status</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-);
+// ❌ DELETE THE PLACEHOLDER COMPONENTS (lines 13-55 in your current file)
+// Remove these:
+// const ISOSHubISL = () => (...);
+// const ISOSHubISF = () => (...);
 
 /**
  * IS OS Hub Router
  * 
  * Dynamically routes users to the appropriate hub view based on their role:
  * - Admin → Redirect to /admin panel
+ * - HRP → HRP view
  * - ISE → Executive view (all ISL reports)
  * - ISL → Pillar leader view (pillar team)
- * - Supervisor → Team leader view (direct reports, uses ISL component)
+ * - Supervisor → Supervisor view (ISF with direct reports)
  * - ISF → Individual contributor view (personal data only)
  */
 function ISOSHub() {
@@ -114,14 +75,14 @@ function ISOSHub() {
   }
 
   // ========================================
-  // ROUTING LOGIC
+  // ROUTING LOGIC (PRIORITY ORDER)
   // ========================================
 
   console.log('🔍 IS OS Hub - Routing user:', {
     uid: user.uid,
     displayName: user.displayName,
     layer: user.layer,
-    pillarRole: user.pillarRole,
+    role: user.role,
     flags: user.flags
   });
 
@@ -130,25 +91,31 @@ function ISOSHub() {
     return null; // Will redirect via useEffect
   }
 
-  // 2. ISE → Executive View
+  // 2. HRP → HRP View
+  if (user.role?.toLowerCase() === 'hrp' || user.flags?.isHRP || user.layer?.toLowerCase() === 'hrp') {
+    console.log('✅ Routing to ISOSHubHRP (HRP View)');
+    return <ISOSHubHRP />;
+  }
+
+  // 3. ISE → Executive View
   if (user.layer === 'ISE') {
     console.log('✅ Routing to ISOSHubISE (Executive View)');
     return <ISOSHubISE />;
   }
 
-  // 3. ISL → Pillar Leader View
+  // 4. ISL → Pillar Leader View
   if (user.layer === 'ISL' || user.flags?.isPillarLeader) {
     console.log('✅ Routing to ISOSHubISL (Pillar Leader View)');
     return <ISOSHubISL />;
   }
 
-  // 4. SUPERVISOR → Team Leader View (same as ISL)
+  // 5. SUPERVISOR → Supervisor View (ISF with direct reports)
   if (user.flags?.isSupervisor) {
-    console.log('✅ Routing to ISOSHubISL (Supervisor View)');
-    return <ISOSHubISL />;
+    console.log('✅ Routing to ISOSHubISFSupervisor (Supervisor View)');
+    return <ISOSHubISFSupervisor />;
   }
 
-  // 5. ISF → Individual Contributor View
+  // 6. ISF → Individual Contributor View
   if (user.layer === 'ISF') {
     console.log('✅ Routing to ISOSHubISF (Individual Contributor View)');
     return <ISOSHubISF />;
@@ -160,7 +127,7 @@ function ISOSHub() {
 
   console.error('❌ Unknown role/layer:', {
     layer: user.layer,
-    pillarRole: user.pillarRole,
+    role: user.role,
     flags: user.flags
   });
 
@@ -195,7 +162,7 @@ function ISOSHub() {
             <div className="flex items-start gap-2">
               <Users className="w-4 h-4 text-gray-500 mt-0.5" />
               <div>
-                <span className="font-medium">Pillar Role:</span> {user.pillarRole || 'Not Set'}
+                <span className="font-medium">Role:</span> {user.role || 'Not Set'}
               </div>
             </div>
           </div>
@@ -219,6 +186,7 @@ function ISOSHub() {
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
             <h4 className="font-semibold text-gray-900 mb-2">Expected Role Values:</h4>
             <ul className="text-sm text-gray-700 space-y-1">
+              <li><code className="bg-gray-200 px-1 rounded">role: "hrp"</code> → HRP Dashboard</li>
               <li><code className="bg-gray-200 px-1 rounded">layer: "ISE"</code> → Executive Dashboard</li>
               <li><code className="bg-gray-200 px-1 rounded">layer: "ISL"</code> → Pillar Leader Dashboard</li>
               <li><code className="bg-gray-200 px-1 rounded">layer: "ISF"</code> + <code className="bg-gray-200 px-1 rounded">flags.isSupervisor: true</code> → Supervisor Dashboard</li>
