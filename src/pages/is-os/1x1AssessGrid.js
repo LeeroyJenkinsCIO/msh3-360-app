@@ -562,6 +562,14 @@ function AssessmentGrid1x1() {
   const is360 = assessment.assessmentType === '360' || assessment.assessmentType === 'peer';
   const isPublished = assessment.status === 'published' || assessment.status === 'calibrated' || assessment.mshPublished;
   const isCompleted = assessment.status === 'completed';
+  
+  console.log('🎨 Rendering header with:', {
+    subjectName: subjectInfo?.displayName,
+    assessorName: assessorInfo?.displayName,
+    subjectInfo,
+    assessorInfo,
+    status: isPublished ? 'published' : isCompleted ? 'completed' : 'in-progress'
+  });
 
   return (
     <div className={`min-h-screen ${is360 ? 'bg-teal-50' : 'bg-gray-50'}`}>
@@ -569,10 +577,15 @@ function AssessmentGrid1x1() {
         {/* Page Header Component */}
         <PageHeader
           mode={assessment?.assessmentType || '1x1'}
+          title="1x1 Assessment"
+          subtitle={`Assessing ${subjectInfo?.displayName || 'Subject'}`}
+          subjectName={subjectInfo?.displayName || 'Loading...'}
+          assessorName={assessorInfo?.displayName || 'You'}
           subject={subjectInfo}
           assessor={assessorInfo}
           status={isPublished ? 'published' : isCompleted ? 'completed' : 'in-progress'}
           onBack={() => navigate(-1)}
+          showBackButton={true}
         />
 
         {/* Main Content Area */}

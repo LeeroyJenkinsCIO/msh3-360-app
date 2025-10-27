@@ -48,9 +48,17 @@ const DOMAINS = [
 ];
 
 function PairAssessment360() {
-  const { assessmentId } = useParams();
+  const params = useParams();
+  const assessmentId = params.assessmentId || params.id; // ✅ Try both parameter names
   const navigate = useNavigate();
   const { user } = useAuth();
+  
+  console.log('🎬 360PairAssessment component mounted:', {
+    urlParams: params,
+    assessmentId,
+    hasUser: !!user,
+    userUid: user?.uid
+  });
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -73,68 +81,187 @@ function PairAssessment360() {
   });
 
   useEffect(() => {
+    console.log('🔄 360PairAssessment useEffect triggered:', {
+      assessmentId,
+      hasUser: !!user,
+      userUid: user?.uid
+    });
+    
     if (assessmentId && user) {
+      console.log('✅ Conditions met, loading assessment...');
       loadAssessment();
+    } else {
+      console.warn('⚠️ Missing requirements:', {
+        hasAssessmentId: !!assessmentId,
+        hasUser: !!user
+      });
     }
+    
+    // Safety timeout - if still loading after 10 seconds, force stop
+    const timeout = setTimeout(() => {
+      setLoading(false);
+      console.error('❌ Loading timeout - forced stop after 10 seconds');
+    }, 10000);
+    
+    return () => clearTimeout(timeout);
   }, [assessmentId, user]);
 
   const loadAssessment = async () => {
     try {
       setLoading(true);
+      console.log('🚀 Starting to load assessment:', assessmentId);
 
       const assessmentRef = doc(db, 'assessments', assessmentId);
       const assessmentSnap = await getDoc(assessmentRef);
 
       if (!assessmentSnap.exists()) {
-        console.error('Assessment not found:', assessmentId);
+        console.error('❌ Assessment not found:', assessmentId);
         alert('Assessment not found');
+        setLoading(false);
         navigate(-1);
         return;
       }
 
       const assessmentData = { id: assessmentSnap.id, ...assessmentSnap.data() };
-      setAssessment(assessmentData);
+      
+      // ✅ NORMALIZE FIELD NAMES: Handle multiple variations
+      const assessorUid = assessmentData.assessorUid || assessmentData.giver?.uid || assessmentData.assessorId;
+      const subjectUid = assessmentData.subjectUid || assessmentData.receiver?.uid || assessmentData.subjectId;
+      
+      console.log('📋 360° Assessment loaded:', {
+        id: assessmentData.id,
+        assessorUid,
+        subjectUid,
+        currentUser: user.uid,
+        status: assessmentData.status,
+        hasScores: !!assessmentData.scores
+      });
+      
+      // Normalize the assessment data with consistent field names
+      const normalizedAssessment = {
+        ...assessmentData,
+        assessorUid,
+        subjectUid
+      };
+      
+      setAssessment(normalizedAssessment);
 
       // Verify user is the assessor
-      if (assessmentData.assessorUid !== user.uid) {
-        console.error('User is not the assessor');
+      if (assessorUid !== user.uid) {
+        console.error('❌ User is not the assessor', {
+          assessorUid,
+          currentUser: user.uid
+        });
         alert('You do not have permission to complete this assessment');
+        setLoading(false);
         navigate(-1);
         return;
       }
 
       // Load subject info
-      if (assessmentData.subjectUid) {
-        const subjectRef = doc(db, 'users', assessmentData.subjectUid);
-        const subjectSnap = await getDoc(subjectRef);
-        if (subjectSnap.exists()) {
-          setSubjectInfo({ id: subjectSnap.id, ...subjectSnap.data() });
+      if (subjectUid) {
+        try {
+          const subjectRef = doc(db, 'users', subjectUid);
+          const subjectSnap = await getDoc(subjectRef);
+          if (subjectSnap.exists()) {
+            setSubjectInfo({ id: subjectSnap.id, ...subjectSnap.data() });
+            console.log('✅ Subject loaded:', subjectSnap.data().displayName);
+          } else {
+            console.warn('⚠️ Subject user not found:', subjectUid);
+          }
+        } catch (subjectErr) {
+          console.error('❌ Error loading subject:', subjectErr);
         }
       }
 
       // Load assessor info
-      if (assessmentData.assessorUid) {
-        const assessorRef = doc(db, 'users', assessmentData.assessorUid);
-        const assessorSnap = await getDoc(assessorRef);
-        if (assessorSnap.exists()) {
-          setAssessorInfo({ id: assessorSnap.id, ...assessorSnap.data() });
+      if (assessorUid) {
+        try {
+          const assessorRef = doc(db, 'users', assessorUid);
+          const assessorSnap = await getDoc(assessorRef);
+          if (assessorSnap.exists()) {
+            setAssessorInfo({ id: assessorSnap.id, ...assessorSnap.data() });
+            console.log('✅ Assessor loaded:', assessorSnap.data().displayName);
+          } else {
+            console.warn('⚠️ Assessor user not found:', assessorUid);
+          }
+        } catch (assessorErr) {
+          console.error('❌ Error loading assessor:', assessorErr);
         }
       }
 
       // Load existing scores and notes if available
       if (assessmentData.scores) {
-        setScores(assessmentData.scores);
+        // ✅ MERGE loaded scores with default structure to ensure all fields exist
+        const defaultScores = {
+          culture: { contribution: 1, growth: 1 },
+          competencies: { contribution: 1, growth: 1 },
+          execution: { contribution: 1, growth: 1 }
+        };
+        
+        const mergedScores = {
+          culture: {
+            contribution: assessmentData.scores.culture?.contribution ?? defaultScores.culture.contribution,
+            growth: assessmentData.scores.culture?.growth ?? defaultScores.culture.growth
+          },
+          competencies: {
+            contribution: assessmentData.scores.competencies?.contribution ?? defaultScores.competencies.contribution,
+            growth: assessmentData.scores.competencies?.growth ?? defaultScores.competencies.growth
+          },
+          execution: {
+            contribution: assessmentData.scores.execution?.contribution ?? defaultScores.execution.contribution,
+            growth: assessmentData.scores.execution?.growth ?? defaultScores.execution.growth
+          }
+        };
+        
+        console.log('✅ Scores merged:', {
+          loaded: assessmentData.scores,
+          merged: mergedScores
+        });
+        
+        setScores(mergedScores);
+      } else {
+        console.log('✅ Using default scores (no scores in assessment)');
       }
 
       if (assessmentData.notes) {
-        setNotes(assessmentData.notes);
+        // ✅ MERGE loaded notes with default structure to ensure all fields exist
+        const defaultNotes = {
+          culture: '',
+          competencies: '',
+          execution: '',
+          general: ''
+        };
+        
+        const mergedNotes = {
+          culture: assessmentData.notes.culture ?? defaultNotes.culture,
+          competencies: assessmentData.notes.competencies ?? defaultNotes.competencies,
+          execution: assessmentData.notes.execution ?? defaultNotes.execution,
+          general: assessmentData.notes.general ?? defaultNotes.general
+        };
+        
+        console.log('✅ Notes merged:', {
+          loaded: assessmentData.notes,
+          merged: mergedNotes
+        });
+        
+        setNotes(mergedNotes);
+      } else {
+        console.log('✅ Using default notes (no notes in assessment)');
       }
 
+      console.log('✅ Assessment loading complete');
       setLoading(false);
     } catch (err) {
-      console.error('Error loading assessment:', err);
+      console.error('❌ Error loading assessment:', err);
+      console.error('Error details:', {
+        message: err.message,
+        code: err.code,
+        stack: err.stack
+      });
       alert('Error loading assessment: ' + err.message);
       setLoading(false);
+      // Don't navigate away on error - let user see what happened
     }
   };
 
@@ -213,16 +340,27 @@ function PairAssessment360() {
     if (submitting) return;
 
     // Validation
+    console.log('🔍 Validating scores before submit:', scores);
+    
     const hasAllScores = DOMAINS.every(domain =>
-      domain.dimensions.every(dim => scores[domain.id]?.[dim.id] !== undefined)
+      domain.dimensions.every(dim => {
+        const hasScore = scores[domain.id]?.[dim.id] !== undefined;
+        console.log(`  ${domain.id}.${dim.id}: ${scores[domain.id]?.[dim.id]} (${hasScore ? '✅' : '❌'})`);
+        return hasScore;
+      })
     );
+
+    console.log('📊 Validation result:', {
+      hasAllScores,
+      currentScores: scores
+    });
 
     if (!hasAllScores) {
       alert('Please complete all scores before submitting');
       return;
     }
 
-    if (!notes.general.trim()) {
+    if (!notes.general?.trim()) {
       alert('Please provide general feedback notes before submitting');
       return;
     }

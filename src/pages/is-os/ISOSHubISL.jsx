@@ -720,7 +720,7 @@ function ISOSHubISL() {
         orgCumulativeAvg: cumulativeCompletionPercent,
         orgCumulativeCount: cumulativeMSH.length,
         orgTrend,
-        completedCount: allCycleAssessments.filter(a => a.status === 'completed' || a.status === 'calibrated').length,
+        completedCount: allCycleAssessments.filter(a => a.status === 'completed' || a.status === 'calibrated' || a.status === 'published').length,
         totalCount: cycleExpectedTotal,
         // ✅ STEP 3: Pass MSH³ metrics to HubMetricsBar
         currentMonthMSH: currentMonthMSH.length,
