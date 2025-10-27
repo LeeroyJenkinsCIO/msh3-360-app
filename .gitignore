@@ -1,0 +1,99 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# ====================================
+# Dependencies
+# ====================================
+/node_modules
+/.pnp
+.pnp.js
+package-lock.json
+
+# ====================================
+# Testing
+# ====================================
+/coverage
+*.test.js
+*.spec.js
+
+# ====================================
+# Production Build
+# ====================================
+/build
+/dist
+/.next
+
+# ====================================
+# Environment Variables - NEVER COMMIT
+# ====================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.production
+
+# ====================================
+# Firebase Admin Security - NEVER COMMIT
+# ====================================
+serviceAccountKey.json
+*AccountKey.json
+msh3-dev-service-account.json
+msh3-prod-service-account.json
+firebase-adminsdk-*.json
+
+# ====================================
+# Firebase Cache & Local Data
+# ====================================
+.firebase/
+.firebaserc.local
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# ====================================
+# Setup & Migration Scripts
+# ====================================
+firebase-setup.js
+setup-isl-leaders.js
+import*.js
+migrate*.js
+migrate*.mjs
+resetFirebase.mjs
+set-dev-passwords.js
+archive-migrations/
+
+# ====================================
+# Logs
+# ====================================
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# ====================================
+# OS & Editor Files
+# ====================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ====================================
+# Vercel
+# ====================================
+.vercel
+
+# ====================================
+# Temporary Files
+# ====================================
+*.tmp
+*.temp
+.cache/
