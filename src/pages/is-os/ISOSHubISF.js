@@ -4,6 +4,10 @@
 // ✅ STEP 2: Fixed ISL Leadership to include ISE and show correct 360 totals (0/30)
 // ✅ STEP 3: Fixed Metrics Bar to show correct MSH³ totals (0/49 for Dec, 0/97 for cycle)
 // ✅ STEP 4: Organizational context only - ISF doesn't have org-wide completion card
+// ✅ STEP 5: Updated routing - 360 pair assessments now use dedicated 360PairAssessment component
+// ✅ STEP 6: Fixed MSH query to get ALL scores from 'mshs' collection (not date-filtered)
+// ✅ STEP 7: Added dual-key userMap mapping (Firebase UID + userId string)
+// ✅ STEP 8: Fixed My Compass for 360 - shows published MSH count/DR count (e.g., 1/5)
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -144,10 +148,8 @@ function ISOSHubISF() {
       const [pillarsSnapshot, usersSnapshot, mshSnapshot, ...assessmentSnapshots] = await Promise.all([
         getDocs(collection(db, 'pillars')),
         getDocs(collection(db, 'users')),
-        getDocs(query(
-          collection(db, 'mshScores'),
-          where('publishedAt', '>=', Timestamp.fromDate(cycleInfo.cycleStartDate))
-        )),
+        // ✅ FIXED: Get ALL MSH scores for History (not just current cycle)
+        getDocs(collection(db, 'mshs')),
         ...cycleInfo.cycleMonths.map(cycleMonthInfo =>
           getDocs(query(
             collection(db, 'assessments'),
@@ -188,7 +190,11 @@ function ISOSHubISF() {
       
       usersSnapshot.docs.forEach(doc => {
         const userData = { id: doc.id, ...doc.data() };
-        userMap[userData.userId] = userData;
+        // ✅ FIX: Dual-key mapping - MSH docs use userId strings like "robert_paddock"
+        userMap[doc.id] = userData;  // Firebase UID
+        if (userData.userId) {
+          userMap[userData.userId] = userData;  // userId string
+        }
         
         if (userData.layer === 'ISE') {
           iseUsers.push(userData);
@@ -223,6 +229,12 @@ function ISOSHubISF() {
         publishedAt: doc.data().publishedAt?.toDate()
       }));
 
+      console.log('🔍 MSH Snapshot:', {
+        totalDocs: mshSnapshot.docs.length,
+        allMSHLength: allMSH.length,
+        sampleMSH: allMSH[0]
+      });
+
       // Cumulative MSH (cycle start → selected month)
       const cumulativeMSH = allMSH.filter(m => 
         (m.cycleYear < displayYear) || 
@@ -231,12 +243,12 @@ function ISOSHubISF() {
 
       // ✅ STEP 2: ISL Leadership now includes BOTH ISE and ISL
       const islLayerMSH = allMSH.filter(m => 
-        islUsers.some(u => u.userId === m.subjectId) || 
-        iseUsers.some(u => u.userId === m.subjectId)
+        islUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId) || 
+        iseUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId)
       );
       const cumulativeISLLayer = cumulativeMSH.filter(m => 
-        islUsers.some(u => u.userId === m.subjectId) || 
-        iseUsers.some(u => u.userId === m.subjectId)
+        islUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId) || 
+        iseUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId)
       );
 
       // All ISF/ISF Supervisor MSH
@@ -257,8 +269,8 @@ function ISOSHubISF() {
       );
       
       const currentMonthISLLayer = currentMonthMSH.filter(m => 
-        islUsers.some(u => u.userId === m.subjectId) || 
-        iseUsers.some(u => u.userId === m.subjectId)
+        islUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId) || 
+        iseUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId)
       );
       
       const currentMonthAllISF = currentMonthMSH.filter(m => 
@@ -279,8 +291,8 @@ function ISOSHubISF() {
       );
       
       const prevMonthISLLayer = prevMonthMSH.filter(m => 
-        islUsers.some(u => u.userId === m.subjectId) || 
-        iseUsers.some(u => u.userId === m.subjectId)
+        islUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId) || 
+        iseUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId)
       );
       
       const prevMonthAllISF = prevMonthMSH.filter(m => 
@@ -299,18 +311,20 @@ function ISOSHubISF() {
       const uniqueISLLayerCompleted = new Set(currentMonthISLLayer.map(m => m.subjectId)).size;
       const uniqueAllISFCompleted = new Set(currentMonthAllISF.map(m => m.subjectId)).size;
       const uniqueMyPillarCompleted = new Set(currentMonthMyPillar.map(m => m.subjectId)).size;
-      const uniqueMyCompleted = currentMonthMy.length > 0 ? 1 : 0;
+      // ✅ STEP 8: My Compass for 360 - shows published MSH count
+      const myCompleted = currentMonthMy.length;  // Count of published MSH scores
+      const myTotal = 1;  // ISF always expects 1 MSH from supervisor
 
       // Calculate scores
-      const islScore = calcAvg(currentMonthISLLayer.map(m => m.composite));
-      const allPillarsScore = calcAvg(currentMonthAllISF.map(m => m.composite));
-      const myPillarScore = calcAvg(currentMonthMyPillar.map(m => m.composite));
-      const myScore = calcAvg(currentMonthMy.map(m => m.composite));
+      const islScore = calcAvg(currentMonthISLLayer.map(m => m.compositeScore));
+      const allPillarsScore = calcAvg(currentMonthAllISF.map(m => m.compositeScore));
+      const myPillarScore = calcAvg(currentMonthMyPillar.map(m => m.compositeScore));
+      const myScore = calcAvg(currentMonthMy.map(m => m.compositeScore));
 
-      const prevIslScore = calcAvg(prevMonthISLLayer.map(m => m.composite));
-      const prevAllPillarsScore = calcAvg(prevMonthAllISF.map(m => m.composite));
-      const prevMyPillarScore = calcAvg(prevMonthMyPillar.map(m => m.composite));
-      const prevMyScore = calcAvg(prevMonthMy.map(m => m.composite));
+      const prevIslScore = calcAvg(prevMonthISLLayer.map(m => m.compositeScore));
+      const prevAllPillarsScore = calcAvg(prevMonthAllISF.map(m => m.compositeScore));
+      const prevMyPillarScore = calcAvg(prevMonthMyPillar.map(m => m.compositeScore));
+      const prevMyScore = calcAvg(prevMonthMy.map(m => m.compositeScore));
 
       // Calculate trends
       const islTrend = (islScore && prevIslScore)
@@ -350,7 +364,7 @@ function ISOSHubISF() {
       const isgsCompassTotal = cycleInfo.cycleType === '360' 
         ? 49  // 30 (ISL Layer) + 19 (Pillars)
         : 24; // 5 (ISL Layer) + 19 (Pillars)
-      const isgsCompassCumulativeScores = [...cumulativeISLLayer, ...cumulativeAllISF].map(m => m.composite);
+      const isgsCompassCumulativeScores = [...cumulativeISLLayer, ...cumulativeAllISF].map(m => m.compositeScore);
 
       // Assessments
       const allCycleAssessments = assessmentSnapshots.flatMap(snapshot =>
@@ -408,25 +422,25 @@ function ISOSHubISF() {
         islScore,
         islCompleted: uniqueISLLayerCompleted,
         islTotal: cycleInfo.cycleType === '360' ? 30 : 5,  // ISE (1) + ISL (4-5) in 1x1, or 6x each in 360
-        islCumulativeAvg: calcAvg(cumulativeISLLayer.map(m => m.composite)),
+        islCumulativeAvg: calcAvg(cumulativeISLLayer.map(m => m.compositeScore)),
         islCumulativeCount: cumulativeISLLayer.length,
         islTrend,
         allPillarsScore,
         allPillarsCompleted: uniqueAllISFCompleted,
         allPillarsTotal: isfUsers.length,
-        allPillarsCumulativeAvg: calcAvg(cumulativeAllISF.map(m => m.composite)),
+        allPillarsCumulativeAvg: calcAvg(cumulativeAllISF.map(m => m.compositeScore)),
         allPillarsCumulativeCount: cumulativeAllISF.length,
         allPillarsTrend,
         myPillarScore,
         myPillarCompleted: uniqueMyPillarCompleted,
         myPillarTotal: myPillarISFUsers.length,
-        myPillarCumulativeAvg: calcAvg(cumulativeMyPillar.map(m => m.composite)),
+        myPillarCumulativeAvg: calcAvg(cumulativeMyPillar.map(m => m.compositeScore)),
         myPillarCumulativeCount: cumulativeMyPillar.length,
         myPillarTrend,
         myScore,
-        myCompleted: uniqueMyCompleted,
-        myTotal: 1,
-        myCumulativeAvg: calcAvg(cumulativeMy.map(m => m.composite)),
+        myCompleted,
+        myTotal,
+        myCumulativeAvg: calcAvg(cumulativeMy.map(m => m.compositeScore)),
         myCumulativeCount: cumulativeMy.length,
         myTrend,
         completedCount: allCycleAssessments.filter(a => a.status === 'completed' || a.status === 'calibrated').length,

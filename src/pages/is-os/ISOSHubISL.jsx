@@ -5,10 +5,9 @@
 // ✅ STEP 3: Fixed Metrics Bar to show correct MSH³ totals (0/49 for Dec, 0/97 for cycle)
 // ✅ STEP 4: Fixed Org-Wide Completion to use MSH³ Publication Rate (not people coverage)
 // ✅ STEP 5: Updated routing - 360 pair assessments now use dedicated 360PairAssessment component
-// ✅ STEP 6: Added History tab with HistoryGrid component
-// ✅ STEP 7: Fixed MSH query to get ALL scores from 'mshs' collection (not date-filtered)
-// ✅ STEP 8: Added dual-key userMap mapping (Firebase UID + userId string)
-// ✅ STEP 9: Fixed My Compass for 360 - shows published MSH count/DR count (e.g., 1/5)
+// ✅ STEP 6: Fixed MSH query to get ALL scores from 'mshs' collection (not date-filtered)
+// ✅ STEP 7: Added dual-key userMap mapping (Firebase UID + userId string)
+// ✅ STEP 8: Fixed My Compass for 360 - shows published MSH count/DR count (e.g., 1/5)
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -22,7 +21,6 @@ import HubTabs from '../../components/hubs/HubTabs';
 import HubMetricsBar from '../../components/hubs/HubMetricsBar';
 import AssessmentOrchestrator from '../../components/hubs/AssessmentOrchestrator';
 import PublishedMSHScoresGrid from '../../components/hubs/PublishedMSHScoresGrid';
-import HistoryGrid from '../../components/hubs/HistoryGrid';
 
 function ISOSHubISL() {
   const { user } = useAuth();
@@ -37,8 +35,6 @@ function ISOSHubISL() {
   const [assessmentsIReceive, setAssessmentsIReceive] = useState([]);
   const [pairings360, setPairings360] = useState([]);
   const [mshScoresIReceive, setMSHScoresIReceive] = useState([]);
-  const [allOrgMSHScores, setAllOrgMSHScores] = useState([]); // ✅ For History tab
-  const [allCompletedAssessments, setAllCompletedAssessments] = useState([]); // ✅ For History tab
   const [pillarInfo, setPillarInfo] = useState(null);
   const [pillarISFUids, setPillarISFUids] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -680,8 +676,6 @@ function ISOSHubISL() {
       setAssessmentsIReceive(receiveAssessments);
       setPairings360(my360Pairings);
       setMSHScoresIReceive(myMSH.sort((a, b) => b.publishedAt - a.publishedAt));
-      setAllOrgMSHScores(allMSH.sort((a, b) => (b.publishedAt || 0) - (a.publishedAt || 0))); // ✅ For History tab
-      setAllCompletedAssessments(allCycleAssessments.filter(a => a.status === 'completed' || a.status === 'calibrated')); // ✅ For History tab
 
       const cycleExpectedTotal = cycleInfo.cycleMonths.reduce((total, m) => {
         const is360 = [3, 6, 9, 12].includes(m.month);
@@ -807,10 +801,8 @@ function ISOSHubISL() {
       baseTabs.push({ id: '360', label: 'MSH 360', count: pairings360.length, subtitle: '360° Pairings I\'m involved in' });
     }
     
-    baseTabs.push({ id: 'history', label: 'History', count: allOrgMSHScores.length, subtitle: 'All MSH scores + completed assessments' });
-
     return baseTabs;
-  }, [assessmentsIGive.length, assessmentsIReceive.length, mshScoresIReceive.length, pairings360.length, metrics.cycleType, allOrgMSHScores.length]);
+  }, [assessmentsIGive.length, assessmentsIReceive.length, mshScoresIReceive.length, pairings360.length, metrics.cycleType]);
 
   const selectedMonthName = useMemo(() => {
     return selectedMonth 
@@ -942,23 +934,6 @@ function ISOSHubISL() {
             <AssessmentOrchestrator assessments={[...assessmentsIGive, ...assessmentsIReceive]} pairings={pairings360} onView360Pair={handleView360Pair} viewMode="360-pairings" currentUserId={user.uid} userRole="ISL" emptyStateMessage="No 360° pairings involving you this cycle" />
           )}
 
-          {activeTab === 'history' && (
-            <>
-              {console.log('🎯 Rendering History with:', {
-                mshScores: allOrgMSHScores.length,
-                assessments: allCompletedAssessments.length,
-                mshSample: allOrgMSHScores[0],
-                assessmentSample: allCompletedAssessments[0]
-              })}
-              <HistoryGrid 
-                mshScores={allOrgMSHScores}
-                completedAssessments={allCompletedAssessments}
-                currentUserId={user.uid}
-                onViewMSH={handleViewScore}
-                onViewAssessment={handleViewAssessment}
-              />
-            </>
-          )}
         </div>
       </div>
     </div>

@@ -58,7 +58,7 @@ function HRPAssessmentReview() {
         console.log('📊 Subject ID (assessee):', data.subjectId);
         console.log('📊 Assessor ID:', data.assessorId);
         console.log('📊 Raw scores object:', assessmentData.scores);
-        console.log('📊 Composite from DB:', assessmentData.composite);
+        console.log('📊 Composite from DB:', assessmentData.compositeScore);
         
         // Log each individual score field
         if (assessmentData.scores) {
@@ -405,12 +405,12 @@ function HRPAssessmentReview() {
               <div className="text-xs text-gray-500">0-6 scale</div>
             </div>
             <div className="text-center">
-              <div className="text-5xl font-bold text-blue-500">{safeGetNumber(assessment.composite || totals.composite)}</div>
+              <div className="text-5xl font-bold text-blue-500">{safeGetNumber(assessment.compositeScore || totals.compositeScore)}</div>
               <div className="text-sm text-gray-600 mt-1">Composite</div>
               <div className="text-xs text-gray-500">0-12 scale</div>
-              {assessment.composite !== totals.composite && (
+              {assessment.compositeScore !== totals.compositeScore && (
                 <div className="text-xs text-red-600 mt-1">
-                  ⚠️ Calc: {totals.composite} vs DB: {assessment.composite}
+                  ⚠️ Calc: {totals.compositeScore} vs DB: {assessment.compositeScore}
                 </div>
               )}
             </div>

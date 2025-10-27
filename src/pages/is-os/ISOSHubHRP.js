@@ -4,6 +4,10 @@
 // ✅ FIXED: Pending = hrpRequested + published + NOT reviewed (no hrpReviewedAt)
 // ✅ FIXED: Completed = hrpRequested + published + reviewed (has hrpReviewedAt)
 // ✅ FIXED: Field name is 'hrpRequested' not 'hrpReviewRequested'
+// ✅ STEP 5: Updated routing - 360 pair assessments now use dedicated 360PairAssessment component
+// ✅ STEP 6: Fixed MSH query to get ALL scores from 'mshs' collection (not date-filtered)
+// ✅ STEP 7: Added dual-key userMap mapping (Firebase UID + userId string)
+// ✅ STEP 8: HRP-specific - reviews published MSH scores (no "My Compass" metric)
 // 🎨 COLORS: RED theme
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -137,7 +141,8 @@ function ISOSHubHRP() {
         const [usersSnapshot, pillarsSnapshot, mshSnapshot] = await Promise.all([
           getDocs(collection(db, 'users')),
           getDocs(collection(db, 'pillars')),
-          getDocs(collection(db, 'mshScores'))
+          // ✅ FIXED: Get ALL MSH scores for History (not just current cycle)
+          getDocs(collection(db, 'mshs'))
         ]);
 
         // ✅ FIX: Then fetch assessments separately
@@ -165,7 +170,11 @@ function ISOSHubHRP() {
         
         usersSnapshot.docs.forEach(doc => {
           const userData = { id: doc.id, ...doc.data() };
-          userMap[userData.userId] = userData;
+          // ✅ FIX: Dual-key mapping - MSH docs use userId strings like "robert_paddock"
+          userMap[doc.id] = userData;  // Firebase UID
+          if (userData.userId) {
+            userMap[userData.userId] = userData;  // userId string
+          }
           
           if (userData.layer === 'ISE') {
             iseUsers.push(userData);
@@ -185,6 +194,12 @@ function ISOSHubHRP() {
           ...doc.data(),
           publishedAt: doc.data().publishedAt?.toDate()
         }));
+
+        console.log('🔍 MSH Snapshot:', {
+          totalDocs: mshSnapshot.docs.length,
+          allMSHLength: allMSH.length,
+          sampleMSH: allMSH[0]
+        });
 
         setMSHScores(allMSH);
 
@@ -231,7 +246,7 @@ function ISOSHubHRP() {
             console.log(`    Assessor: ${a.assessorData?.displayName || 'Unknown'}`);
             console.log(`    Completed: ${!!a.completedAt}`);
             console.log(`    Cycle: ${a.cycleMonth}/${a.cycleYear}`);
-            console.log(`    Composite: ${a.composite || 'N/A'}`);
+            console.log(`    Composite: ${a.compositeScore || 'N/A'}`);
             console.log(`    hrpRequested: ${a.hrpRequested}`);
           });
         } else {
@@ -273,7 +288,7 @@ function ISOSHubHRP() {
             id: a.id,
             subject: a.subjectData?.displayName,
             assessor: a.assessorData?.displayName,
-            composite: a.composite,
+            composite: a.compositeScore,
             hrpReviewedAt: a.hrpReviewedAt || 'NOT REVIEWED YET'
           })));
         }
@@ -335,13 +350,13 @@ function ISOSHubHRP() {
         );
 
         const islLayerMSH = allMSH.filter(m => 
-          islUsers.some(u => u.userId === m.subjectId) || 
-          iseUsers.some(u => u.userId === m.subjectId)
+          islUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId) || 
+          iseUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId)
         );
 
         const cumulativeISLLayer = cumulativeMSH.filter(m => 
-          islUsers.some(u => u.userId === m.subjectId) || 
-          iseUsers.some(u => u.userId === m.subjectId)
+          islUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId) || 
+          iseUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId)
         );
 
         const cumulativeAllISF = cumulativeMSH.filter(m => isfUsers.some(u => u.userId === m.subjectId));
@@ -351,8 +366,8 @@ function ISOSHubHRP() {
         );
         
         const currentMonthISLLayer = currentMonthMSH.filter(m => 
-          islUsers.some(u => u.userId === m.subjectId) || 
-          iseUsers.some(u => u.userId === m.subjectId)
+          islUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId) || 
+          iseUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId)
         );
         
         const currentMonthAllISF = currentMonthMSH.filter(m => 
@@ -364,8 +379,8 @@ function ISOSHubHRP() {
         );
         
         const prevMonthISLLayer = prevMonthMSH.filter(m => 
-          islUsers.some(u => u.userId === m.subjectId) || 
-          iseUsers.some(u => u.userId === m.subjectId)
+          islUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId) || 
+          iseUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId)
         );
         
         const prevMonthAllISF = prevMonthMSH.filter(m => 
@@ -375,11 +390,11 @@ function ISOSHubHRP() {
         const uniqueISLLayerCompleted = new Set(currentMonthISLLayer.map(m => m.subjectId)).size;
         const uniqueAllISFCompleted = new Set(currentMonthAllISF.map(m => m.subjectId)).size;
 
-        const islScore = calcAvg(currentMonthISLLayer.map(m => m.composite));
-        const allPillarsScore = calcAvg(currentMonthAllISF.map(m => m.composite));
+        const islScore = calcAvg(currentMonthISLLayer.map(m => m.compositeScore));
+        const allPillarsScore = calcAvg(currentMonthAllISF.map(m => m.compositeScore));
 
-        const prevIslScore = calcAvg(prevMonthISLLayer.map(m => m.composite));
-        const prevAllPillarsScore = calcAvg(prevMonthAllISF.map(m => m.composite));
+        const prevIslScore = calcAvg(prevMonthISLLayer.map(m => m.compositeScore));
+        const prevAllPillarsScore = calcAvg(prevMonthAllISF.map(m => m.compositeScore));
 
         const islTrend = (islScore && prevIslScore)
           ? parseFloat((parseFloat(islScore) - parseFloat(prevIslScore)).toFixed(1))
@@ -407,7 +422,7 @@ function ISOSHubHRP() {
         
         const isgsCompassCompleted = currentMonthISLLayer.length + currentMonthAllISF.length;
         const isgsCompassTotal = cycleInfo.cycleType === '360' ? 49 : 24;
-        const isgsCompassCumulativeScores = [...cumulativeISLLayer, ...cumulativeAllISF].map(m => m.composite);
+        const isgsCompassCumulativeScores = [...cumulativeISLLayer, ...cumulativeAllISF].map(m => m.compositeScore);
 
         const currentMonthMSHPublished = currentMonthMSH.length;
         const currentMonthMSHExpected = cycleInfo.cycleType === '360' ? 49 : 24;
@@ -451,13 +466,13 @@ function ISOSHubHRP() {
           islScore,
           islCompleted: currentMonthISLLayer.length,
           islTotal,
-          islCumulativeAvg: calcAvg(cumulativeISLLayer.map(m => m.composite)),
+          islCumulativeAvg: calcAvg(cumulativeISLLayer.map(m => m.compositeScore)),
           islCumulativeCount: cumulativeISLLayer.length,
           islTrend,
           allPillarsScore,
           allPillarsCompleted: currentMonthAllISF.length,
           allPillarsTotal,
-          allPillarsCumulativeAvg: calcAvg(cumulativeAllISF.map(m => m.composite)),
+          allPillarsCumulativeAvg: calcAvg(cumulativeAllISF.map(m => m.compositeScore)),
           allPillarsCumulativeCount: cumulativeAllISF.length,
           allPillarsTrend,
           orgScore: orgCompletionPercent,
@@ -646,7 +661,7 @@ function ISOSHubHRP() {
                             <div>
                               <span className="text-gray-600">Composite Score:</span>
                               <span className="ml-2 font-semibold text-gray-900">
-                                {assessment.composite || '---'}
+                                {assessment.compositeScore || '---'}
                               </span>
                             </div>
                             <div>
@@ -727,7 +742,7 @@ function ISOSHubHRP() {
                             <div>
                               <span className="text-gray-600">Composite Score:</span>
                               <span className="ml-2 font-semibold text-gray-900">
-                                {assessment.composite || '---'}
+                                {assessment.compositeScore || '---'}
                               </span>
                             </div>
                             <div>

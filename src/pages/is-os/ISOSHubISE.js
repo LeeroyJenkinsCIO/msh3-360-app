@@ -4,8 +4,10 @@
 // ✅ STEP 2: Fixed ISL Leadership to include ISE and show correct 360 totals (0/30)
 // ✅ STEP 3: Fixed Metrics Bar to show correct MSH³ totals (0/49 for Dec, 0/97 for cycle)
 // ✅ STEP 4: Fixed Org-Wide Completion to use MSH³ Publication Rate (not people coverage)
-// ✅ STEP 5: Fixed My Compass for 360 - shows published MSH count/DR count (e.g., 1/5)
-// ✅ STEP 6: Updated routing - 360 pair assessments now use dedicated 360PairAssessment component
+// ✅ STEP 5: Updated routing - 360 pair assessments now use dedicated 360PairAssessment component
+// ✅ STEP 6: Fixed MSH query to get ALL scores from 'mshs' collection (not date-filtered)
+// ✅ STEP 7: Added dual-key userMap mapping (Firebase UID + userId string)
+// ✅ STEP 8: Fixed My Compass for 360 - shows published MSH count/DR count (e.g., 1/5)
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -19,7 +21,6 @@ import HubTabs from '../../components/hubs/HubTabs';
 import HubMetricsBar from '../../components/hubs/HubMetricsBar';
 import AssessmentOrchestrator from '../../components/hubs/AssessmentOrchestrator';
 import PublishedMSHScoresGrid from '../../components/hubs/PublishedMSHScoresGrid';
-import HistoryGrid from '../../components/hubs/HistoryGrid';
 
 function ISOSHubISE() {
   const { user } = useAuth();
@@ -34,8 +35,6 @@ function ISOSHubISE() {
   const [assessmentsIReceive, setAssessmentsIReceive] = useState([]);
   const [pairings360, setPairings360] = useState([]);
   const [mshScoresIReceive, setMSHScoresIReceive] = useState([]);
-  const [allOrgMSHScores, setAllOrgMSHScores] = useState([]); // ✅ For History tab
-  const [allCompletedAssessments, setAllCompletedAssessments] = useState([]); // ✅ For History tab
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState({
     cycleNumber: 1,
@@ -193,7 +192,7 @@ function ISOSHubISE() {
       );
       
       const allISFMSH = allMSH.filter(m => isfUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId));
-      const myMSH = allMSH.filter(m => m.subjectId === user.userId || m.subjectId === user.userId || m.subjectId === user.uid);
+      const myMSH = allMSH.filter(m => m.subjectId === user.userId || m.subjectId === user.uid);
 
       const cumulativeISLLayer = cumulativeMSH.filter(m => 
         islUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId) || 
@@ -582,78 +581,6 @@ function ISOSHubISE() {
       setPairings360(my360Pairings);
       setMSHScoresIReceive(myMSH.sort((a, b) => b.publishedAt - a.publishedAt));
 
-      // ✅ FIXED: Filter MSH scores where I'm subject OR assessor (not org-wide)
-      const myInvolvedMSH = allMSH.filter(m => 
-        m.subjectId === user.uid || m.managerId === user.uid
-      );
-      
-      console.log('🔍 Enrichment Debug:', {
-        sampleMSHSubjectId: myInvolvedMSH[0]?.subjectId,
-        sampleMSHManagerId: myInvolvedMSH[0]?.managerId,
-        userMapKeys: Object.keys(userMap).slice(0, 10),
-        lookupResult: userMap[myInvolvedMSH[0]?.subjectId],
-        currentUserId: user.uid
-      });
-      
-      const enrichedMyMSH = myInvolvedMSH.map(msh => {
-        const subject = userMap[msh.subjectId];
-        const manager = userMap[msh.managerId];
-        const pillar = allPillars.find(p => p.id === subject?.pillarId);
-        
-        return {
-          ...msh,
-          // Use data already in document FIRST, then fall back to lookup
-          subjectName: msh.subjectName || subject?.displayName || subject?.name || 'Unknown',
-          managerName: msh.managerName || manager?.displayName || manager?.name || 'Unknown',
-          pillarName: msh.pillarName || pillar?.pillarName || 'Unknown',
-          subjectLayer: msh.subjectLayer || subject?.layer || 'Unknown',
-          compositeScore: msh.compositeScore || msh.compositeScoreScore || 0
-        };
-      });
-      setAllOrgMSHScores(enrichedMyMSH);
-
-      // ✅ FIXED: Filter completed assessments where I'm subject OR assessor
-      const myInvolvedAssessments = allCycleAssessments.filter(a => {
-        const receiverUid = a.receiver?.uid || a.receiver?.userId || a.subjectId;
-        const giverUid = a.giver?.uid || a.giver?.userId || a.managerId;
-        return (receiverUid === user.uid || giverUid === user.uid) && a.completedAt != null;
-      });
-      
-      const enrichedMyAssessments = myInvolvedAssessments.map(assessment => {
-        // Assessments have giver/receiver objects with nested user data
-        // BUT ALSO may have the names already stored at the top level
-        const subjectName = assessment.subjectName || 
-                           assessment.receiver?.displayName || 
-                           'Unknown';
-        const managerName = assessment.assessorName || 
-                           assessment.giver?.displayName || 
-                           'Unknown';
-        const subjectLayer = assessment.subjectLayer ||
-                            assessment.receiver?.layer || 
-                            'Unknown';
-        
-        // For pillar lookup, try receiver's pillarId if available
-        const pillar = allPillars.find(p => p.id === assessment.receiver?.pillarId);
-        
-        return {
-          ...assessment,
-          subjectName,
-          managerName,
-          pillarName: assessment.pillarName || pillar?.pillarName || 'Unknown',
-          subjectLayer,
-          // Keep original IDs for filtering
-          subjectId: assessment.receiver?.userId || assessment.receiver?.uid,
-          managerId: assessment.giver?.userId || assessment.giver?.uid
-        };
-      });
-      setAllCompletedAssessments(enrichedMyAssessments);
-      
-      console.log('📊 History data (my involvement only):', {
-        mshCount: enrichedMyMSH.length,
-        assessmentCount: enrichedMyAssessments.length,
-        sampleMSH: enrichedMyMSH[0],
-        sampleAssessment: enrichedMyAssessments[0]
-      });
 
       // ✅ STEP 3: Calculate correct MSH³ expectations for Metrics Bar
       // Full cycle MSH³ expected (sum of all 3 months)
@@ -784,9 +711,6 @@ function ISOSHubISE() {
     if (has360Pairings || is360Month) {
       baseTabs.push({ id: '360', label: 'MSH 360', count: pairings360.length, subtitle: '360° Pairings I\'m involved in' });
     }
-
-    // History tab always last
-    baseTabs.push({ id: 'history', label: 'History', count: null, subtitle: 'All MSH scores and assessments' });
 
     return baseTabs;
   }, [assessmentsIGive.length, assessmentsIReceive.length, mshScoresIReceive.length, pairings360.length, metrics.cycleType]);
@@ -1008,23 +932,6 @@ function ISOSHubISE() {
             <AssessmentOrchestrator assessments={[...assessmentsIGive, ...assessmentsIReceive]} pairings={pairings360} onView360Pair={handleView360Pair} viewMode="360-pairings" currentUserId={user.uid} userRole="ISE" emptyStateMessage="No 360° pairings involving you this cycle" />
           )}
 
-          {activeTab === 'history' && (
-            <>
-              {console.log('🎯 Rendering History with:', {
-                mshScores: allOrgMSHScores.length,
-                assessments: allCompletedAssessments.length,
-                mshSample: allOrgMSHScores[0],
-                assessmentSample: allCompletedAssessments[0]
-              })}
-              <HistoryGrid 
-                mshScores={allOrgMSHScores}
-                completedAssessments={allCompletedAssessments}
-                currentUserId={user.uid}
-                onViewMSH={handleViewScore}
-                onViewAssessment={handleViewAssessment}
-              />
-            </>
-          )}
         </div>
       </div>
     </div>

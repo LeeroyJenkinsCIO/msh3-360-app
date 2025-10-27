@@ -4,6 +4,10 @@
 // ✅ STEP 2: Fixed ISL Leadership to include ISE and show correct 360 totals (0/30)
 // ✅ STEP 3: Fixed Metrics Bar to show correct MSH³ totals (0/49 for Dec, 0/97 for cycle)
 // ✅ STEP 4: Fixed Org-Wide Completion to use MSH³ Publication Rate (not people coverage)
+// ✅ STEP 5: Updated routing - 360 pair assessments now use dedicated 360PairAssessment component
+// ✅ STEP 6: Fixed MSH query to get ALL scores from 'mshs' collection (not date-filtered)
+// ✅ STEP 7: Added dual-key userMap mapping (Firebase UID + userId string)
+// ✅ STEP 8: Fixed My Compass for 360 - shows published MSH count/DR count (e.g., 1/5)
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -146,10 +150,8 @@ function ISOSHubISFSupervisor() {
       const [pillarsSnapshot, usersSnapshot, mshSnapshot, ...assessmentSnapshots] = await Promise.all([
         getDocs(collection(db, 'pillars')),
         getDocs(collection(db, 'users')),
-        getDocs(query(
-          collection(db, 'mshScores'),
-          where('publishedAt', '>=', Timestamp.fromDate(cycleInfo.cycleStartDate))
-        )),
+        // ✅ FIXED: Get ALL MSH scores for History (not just current cycle)
+        getDocs(collection(db, 'mshs')),
         ...cycleInfo.cycleMonths.map(cycleMonthInfo =>
           getDocs(query(
             collection(db, 'assessments'),
@@ -172,7 +174,11 @@ function ISOSHubISFSupervisor() {
       
       usersSnapshot.docs.forEach(doc => {
         const userData = { id: doc.id, ...doc.data() };
-        userMap[userData.userId] = userData;
+        // ✅ FIX: Dual-key mapping - MSH docs use userId strings like "robert_paddock"
+        userMap[doc.id] = userData;  // Firebase UID
+        if (userData.userId) {
+          userMap[userData.userId] = userData;  // userId string
+        }
         
         if (userData.layer === 'ISE') {
           iseUsers.push(userData);
@@ -200,6 +206,12 @@ function ISOSHubISFSupervisor() {
         publishedAt: doc.data().publishedAt?.toDate()
       }));
 
+      console.log('🔍 MSH Snapshot:', {
+        totalDocs: mshSnapshot.docs.length,
+        allMSHLength: allMSH.length,
+        sampleMSH: allMSH[0]
+      });
+
       // Cumulative MSH (cycle start → selected month)
       const cumulativeMSH = allMSH.filter(m => 
         (m.cycleYear < displayYear) || 
@@ -208,12 +220,12 @@ function ISOSHubISFSupervisor() {
 
       // ✅ STEP 2: ISL Leadership now includes BOTH ISE and ISL
       const islLayerMSH = allMSH.filter(m => 
-        islUsers.some(u => u.userId === m.subjectId) || 
-        iseUsers.some(u => u.userId === m.subjectId)
+        islUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId) || 
+        iseUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId)
       );
       const cumulativeISLLayer = cumulativeMSH.filter(m => 
-        islUsers.some(u => u.userId === m.subjectId) || 
-        iseUsers.some(u => u.userId === m.subjectId)
+        islUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId) || 
+        iseUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId)
       );
 
       // All ISF/ISF Supervisor MSH
@@ -230,8 +242,8 @@ function ISOSHubISFSupervisor() {
       );
       
       const currentMonthISLLayer = currentMonthMSH.filter(m => 
-        islUsers.some(u => u.userId === m.subjectId) || 
-        iseUsers.some(u => u.userId === m.subjectId)
+        islUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId) || 
+        iseUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId)
       );
       
       const currentMonthAllISF = currentMonthMSH.filter(m => 
@@ -248,8 +260,8 @@ function ISOSHubISFSupervisor() {
       );
       
       const prevMonthISLLayer = prevMonthMSH.filter(m => 
-        islUsers.some(u => u.userId === m.subjectId) || 
-        iseUsers.some(u => u.userId === m.subjectId)
+        islUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId) || 
+        iseUsers.some(u => u.userId === m.subjectId || u.uid === m.subjectId)
       );
       
       const prevMonthAllISF = prevMonthMSH.filter(m => 
@@ -263,16 +275,20 @@ function ISOSHubISFSupervisor() {
       // Calculate completion counts
       const uniqueISLLayerCompleted = new Set(currentMonthISLLayer.map(m => m.subjectId)).size;
       const uniqueAllISFCompleted = new Set(currentMonthAllISF.map(m => m.subjectId)).size;
-      const uniqueMyCompleted = currentMonthMy.length > 0 ? 1 : 0;
+      // ✅ STEP 8: My Compass for 360 - shows published MSH count/DR count
+      const myCompleted = currentMonthMy.length;  // Count of published MSH scores
+      const myTotal = cycleInfo.cycleType === '360' 
+        ? myDirectReportsList.length  // In 360: expect 1 MSH from each DR
+        : 1;  // In 1x1: expect 1 self-assessment
 
       // Calculate scores
-      const islScore = calcAvg(currentMonthISLLayer.map(m => m.composite));
-      const allPillarsScore = calcAvg(currentMonthAllISF.map(m => m.composite));
-      const myScore = calcAvg(currentMonthMy.map(m => m.composite));
+      const islScore = calcAvg(currentMonthISLLayer.map(m => m.compositeScore));
+      const allPillarsScore = calcAvg(currentMonthAllISF.map(m => m.compositeScore));
+      const myScore = calcAvg(currentMonthMy.map(m => m.compositeScore));
 
-      const prevIslScore = calcAvg(prevMonthISLLayer.map(m => m.composite));
-      const prevAllPillarsScore = calcAvg(prevMonthAllISF.map(m => m.composite));
-      const prevMyScore = calcAvg(prevMonthMy.map(m => m.composite));
+      const prevIslScore = calcAvg(prevMonthISLLayer.map(m => m.compositeScore));
+      const prevAllPillarsScore = calcAvg(prevMonthAllISF.map(m => m.compositeScore));
+      const prevMyScore = calcAvg(prevMonthMy.map(m => m.compositeScore));
 
       // Calculate trends
       const islTrend = (islScore && prevIslScore)
@@ -302,8 +318,8 @@ function ISOSHubISFSupervisor() {
         );
         
         const uniqueCompleted = new Set(currentMonthPillarMSH.map(m => m.subjectId)).size;
-        const pillarCurrentScore = calcAvg(currentMonthPillarMSH.map(m => m.composite));
-        const pillarPrevScore = calcAvg(prevMonthPillarMSH.map(m => m.composite));
+        const pillarCurrentScore = calcAvg(currentMonthPillarMSH.map(m => m.compositeScore));
+        const pillarPrevScore = calcAvg(prevMonthPillarMSH.map(m => m.compositeScore));
         
         const pillarTrend = (pillarCurrentScore && pillarPrevScore)
           ? parseFloat((parseFloat(pillarCurrentScore) - parseFloat(pillarPrevScore)).toFixed(1))
@@ -315,7 +331,7 @@ function ISOSHubISFSupervisor() {
           score: pillarCurrentScore,
           completed: uniqueCompleted,
           total: pillarISFUsers.length,
-          cumulativeAvg: calcAvg(pillarCumulative.map(m => m.composite)),
+          cumulativeAvg: calcAvg(pillarCumulative.map(m => m.compositeScore)),
           cumulativeCount: pillarCumulative.length,
           trend: pillarTrend
         };
@@ -342,7 +358,7 @@ function ISOSHubISFSupervisor() {
       const isgsCompassTotal = cycleInfo.cycleType === '360' 
         ? 49  // 30 (ISL Layer) + 19 (Pillars)
         : 24; // 5 (ISL Layer) + 19 (Pillars)
-      const isgsCompassCumulativeScores = [...cumulativeISLLayer, ...cumulativeAllISF].map(m => m.composite);
+      const isgsCompassCumulativeScores = [...cumulativeISLLayer, ...cumulativeAllISF].map(m => m.compositeScore);
 
       // ✅ STEP 4: Org-Wide Completion = MSH³ Publication Rate
       const currentMonthMSHPublished = currentMonthMSH.length;
@@ -617,19 +633,19 @@ function ISOSHubISFSupervisor() {
         islScore,
         islCompleted: uniqueISLLayerCompleted,
         islTotal: cycleInfo.cycleType === '360' ? 30 : 5,  // ISE (1) + ISL (4-5) in 1x1, or 6x each in 360
-        islCumulativeAvg: calcAvg(cumulativeISLLayer.map(m => m.composite)),
+        islCumulativeAvg: calcAvg(cumulativeISLLayer.map(m => m.compositeScore)),
         islCumulativeCount: cumulativeISLLayer.length,
         islTrend,
         allPillarsScore,
         allPillarsCompleted: uniqueAllISFCompleted,
         allPillarsTotal: isfUsers.length,
-        allPillarsCumulativeAvg: calcAvg(cumulativeAllISF.map(m => m.composite)),
+        allPillarsCumulativeAvg: calcAvg(cumulativeAllISF.map(m => m.compositeScore)),
         allPillarsCumulativeCount: cumulativeAllISF.length,
         allPillarsTrend,
         myScore,
-        myCompleted: uniqueMyCompleted,
-        myTotal: 1,
-        myCumulativeAvg: calcAvg(cumulativeMy.map(m => m.composite)),
+        myCompleted,
+        myTotal,
+        myCumulativeAvg: calcAvg(cumulativeMy.map(m => m.compositeScore)),
         myCumulativeCount: cumulativeMy.length,
         myTrend,
         pillarBreakdown: pillarHealthScores,
