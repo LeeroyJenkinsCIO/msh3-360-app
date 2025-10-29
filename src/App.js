@@ -1,5 +1,6 @@
 // 📁 SAVE TO: src/App.js
-// App.js - Complete with MSH Detail Route and Fixed 360 Comparison Import
+// App.js - Complete with ISE-only Assessment History protection
+// ✅ UPDATED: Assessment History route now requires ISE role
 
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
@@ -124,8 +125,12 @@ function App() {
             {/* Projects */}
             <Route path="projects" element={<ProjectsDashboardPage />} />
             
-            {/* Assessment History */}
-            <Route path="is-os/assessments/history" element={<AssessmentHistory />} />
+            {/* ✅ UPDATED: Assessment History - ISE-ONLY ACCESS */}
+            <Route path="is-os/assessments/history" element={
+              <ProtectedRoute requireRole="ise">
+                <AssessmentHistory />
+              </ProtectedRoute>
+            } />
             
             {/* Self-Assessment Route */}
             <Route path="is-os/self-assessment/:id" element={<SelfAssessmentPage />} />

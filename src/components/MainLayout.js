@@ -1,6 +1,6 @@
 // 📁 SAVE TO: src/components/MainLayout.js
 // Main application layout with navigation and authentication
-// ✅ UPDATED: Added clickable logo with role-based smart navigation
+// ✅ UPDATED: Assessment History restricted to ISE-only
 
 import React from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
@@ -88,7 +88,8 @@ function MainLayout() {
     {
       name: 'Assessment History',
       path: '/is-os/assessments/history',
-      showForAll: true,
+      showForAll: false,        // ✅ CHANGED: Was true, now false (ISE-only)
+      requireISE: true,          // ✅ NEW: ISE-only flag
       hideForAdmin: true,
       showForHRP: false
     },
@@ -106,6 +107,11 @@ function MainLayout() {
     // Admin-only items
     if (item.requireAdmin) {
       return isAdmin;
+    }
+    
+    // ✅ NEW: ISE-only items
+    if (item.requireISE) {
+      return user?.layer?.toLowerCase() === 'ise';
     }
     
     // Items hidden from admin

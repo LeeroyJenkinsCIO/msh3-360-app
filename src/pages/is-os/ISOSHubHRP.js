@@ -8,6 +8,7 @@
 // ✅ STEP 6: Fixed MSH query to get ALL scores from 'mshs' collection (not date-filtered)
 // ✅ STEP 7: Added dual-key userMap mapping (Firebase UID + userId string)
 // ✅ STEP 8: HRP-specific - reviews published MSH scores (no "My Compass" metric)
+// ✅ STEP 9: Fixed Assessment Progress count (was hardcoded to 0/0) + Check MSH docs for hrpRequested
 // 🎨 COLORS: RED theme
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -213,7 +214,7 @@ function ISOSHubHRP() {
           };
         });
 
-        // Combine all assessments
+        // Combine all assessments and enrich with MSH data
         const allAssessments = [];
         assessmentSnapshots.forEach((snapshot, index) => {
           console.log(`  Cycle Month ${index + 1} Assessments:`, snapshot.docs.length);
@@ -226,6 +227,28 @@ function ISOSHubHRP() {
             };
             assessmentData.subjectData = userMap[assessmentData.subjectId] || null;
             assessmentData.assessorData = userMap[assessmentData.assessorId] || null;
+            
+            // ✅ Enrich with corresponding MSH data (if published)
+            const correspondingMSH = allMSH.find(m => 
+              m.subjectId === assessmentData.subjectId &&
+              m.assessorId === assessmentData.assessorId &&
+              m.cycleMonth === assessmentData.cycleMonth &&
+              m.cycleYear === assessmentData.cycleYear
+            );
+            
+            if (correspondingMSH) {
+              assessmentData.mshData = correspondingMSH;
+              assessmentData.compositeScore = correspondingMSH.compositeScore;
+              // If hrpRequested is on MSH, copy it to assessment for easier filtering
+              if (correspondingMSH.hrpRequested === true) {
+                assessmentData.hrpRequested = true;
+              }
+              // Copy hrpReviewedAt from MSH if it exists there
+              if (correspondingMSH.hrpReviewedAt) {
+                assessmentData.hrpReviewedAt = correspondingMSH.hrpReviewedAt;
+              }
+            }
+            
             allAssessments.push(assessmentData);
           });
         });
@@ -261,24 +284,60 @@ function ISOSHubHRP() {
 
         // ✅ Filter assessments needing HRP review
         // Show assessments that:
-        // 1. Have hrpRequested = true (flagged for HRP review)
+        // 1. Have hrpRequested = true (flagged for HRP review) - CHECK BOTH ASSESSMENT AND MSH
         // 2. ARE completed
         // 3. DO have a published MSH score (HRP reviews published scores)
         // 4. Do NOT have hrpReviewedAt (HRP hasn't reviewed yet)
+        
+        console.log('\n🔍 CHECKING FOR HRP REQUESTS:');
+        console.log('Checking MSH documents for hrpRequested flag...');
+        
+        // Check MSH documents for hrpRequested flag
+        const mshWithHRPRequest = allMSH.filter(m => m.hrpRequested === true);
+        console.log(`MSH scores with hrpRequested=true: ${mshWithHRPRequest.length}`);
+        
+        if (mshWithHRPRequest.length > 0) {
+          console.log('MSH scores flagged for HRP review:');
+          mshWithHRPRequest.forEach(m => {
+            console.log(`  - Subject: ${userMap[m.subjectId]?.displayName || m.subjectId}`);
+            console.log(`    Assessor: ${userMap[m.assessorId]?.displayName || m.assessorId}`);
+            console.log(`    Cycle: ${m.cycleMonth}/${m.cycleYear}`);
+            console.log(`    Composite: ${m.compositeScore}`);
+            console.log(`    hrpReviewedAt: ${m.hrpReviewedAt || 'NOT REVIEWED'}`);
+          });
+        }
+        
         const needsReview = allAssessments.filter(a => {
-          if (a.hrpRequested !== true) return false;
-          if (!a.completedAt) return false;
+          // Check if assessment itself has hrpRequested flag
+          if (a.hrpRequested === true) {
+            if (!a.completedAt) return false;
+            
+            // Check if MSH score exists for this assessment
+            const hasPublishedMSH = allMSH.some(m => 
+              m.subjectId === a.subjectId &&
+              m.assessorId === a.assessorId &&
+              m.cycleMonth === a.cycleMonth &&
+              m.cycleYear === a.cycleYear
+            );
+            
+            // Must be published AND not yet reviewed by HRP
+            return hasPublishedMSH && !a.hrpReviewedAt;
+          }
           
-          // Check if MSH score exists for this assessment
-          const hasPublishedMSH = allMSH.some(m => 
+          // Also check if the corresponding MSH score has hrpRequested flag
+          const correspondingMSH = allMSH.find(m => 
             m.subjectId === a.subjectId &&
             m.assessorId === a.assessorId &&
             m.cycleMonth === a.cycleMonth &&
             m.cycleYear === a.cycleYear
           );
           
-          // Must be published AND not yet reviewed by HRP
-          return hasPublishedMSH && !a.hrpReviewedAt;
+          if (correspondingMSH && correspondingMSH.hrpRequested === true) {
+            // MSH is flagged for review and not yet reviewed
+            return !correspondingMSH.hrpReviewedAt;
+          }
+          
+          return false;
         });
 
         console.log('\n✅ RESULTS:');
@@ -295,24 +354,41 @@ function ISOSHubHRP() {
 
         // ✅ Filter completed reviews
         // Show assessments that:
-        // 1. Have hrpRequested = true (flagged for HRP review)
+        // 1. Have hrpRequested = true (flagged for HRP review) - CHECK BOTH ASSESSMENT AND MSH
         // 2. Are completed
         // 3. DO have a published MSH score
         // 4. DO have hrpReviewedAt (HRP has completed review)
         const completedReviews = allAssessments.filter(a => {
-          if (a.hrpRequested !== true) return false;
-          if (!a.completedAt) return false;
-          if (!a.hrpReviewedAt) return false;
+          // Check if assessment itself has hrpRequested flag
+          if (a.hrpRequested === true) {
+            if (!a.completedAt) return false;
+            if (!a.hrpReviewedAt) return false;
+            
+            // Check if MSH score exists for this assessment
+            const hasPublishedMSH = allMSH.some(m => 
+              m.subjectId === a.subjectId &&
+              m.assessorId === a.assessorId &&
+              m.cycleMonth === a.cycleMonth &&
+              m.cycleYear === a.cycleYear
+            );
+            
+            return hasPublishedMSH;
+          }
           
-          // Check if MSH score exists for this assessment
-          const hasPublishedMSH = allMSH.some(m => 
+          // Also check if the corresponding MSH score has hrpRequested flag
+          const correspondingMSH = allMSH.find(m => 
             m.subjectId === a.subjectId &&
             m.assessorId === a.assessorId &&
             m.cycleMonth === a.cycleMonth &&
             m.cycleYear === a.cycleYear
           );
           
-          return hasPublishedMSH;
+          if (correspondingMSH && correspondingMSH.hrpRequested === true) {
+            // MSH is flagged for review and has been reviewed
+            return !!correspondingMSH.hrpReviewedAt;
+          }
+          
+          return false;
         });
 
         console.log('Completed HRP reviews (already reviewed by HRP):', completedReviews.length);
@@ -485,8 +561,11 @@ function ISOSHubHRP() {
           completedReviews: completedReviews.length,
           avgReviewTime,
           thisMonthReviews: completedThisMonth.length,
-          completedCount: 0,
-          totalCount: 0,
+          completedCount: allAssessments.filter(a => a.status === 'completed' || a.status === 'calibrated' || a.status === 'published').length,
+          totalCount: cycleInfo.cycleMonths.reduce((total, m) => {
+            const is360 = [3, 6, 9, 12].includes(m.month);
+            return total + (is360 ? 93 : 24);
+          }, 0),
           currentMonthMSH: currentMonthMSHPublished,
           currentMonthMSHExpected,
           cycleMSH,

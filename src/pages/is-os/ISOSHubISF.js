@@ -8,6 +8,7 @@
 // ✅ STEP 6: Fixed MSH query to get ALL scores from 'mshs' collection (not date-filtered)
 // ✅ STEP 7: Added dual-key userMap mapping (Firebase UID + userId string)
 // ✅ STEP 8: Fixed My Compass for 360 - shows published MSH count/DR count (e.g., 1/5)
+// ✅ STEP 9: Fixed Assessment Progress count to include 'published' status (aligns with ISL hub)
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -443,7 +444,7 @@ function ISOSHubISF() {
         myCumulativeAvg: calcAvg(cumulativeMy.map(m => m.compositeScore)),
         myCumulativeCount: cumulativeMy.length,
         myTrend,
-        completedCount: allCycleAssessments.filter(a => a.status === 'completed' || a.status === 'calibrated').length,
+        completedCount: allCycleAssessments.filter(a => a.status === 'completed' || a.status === 'calibrated' || a.status === 'published').length,
         totalCount: cycleExpectedTotal,
         // ✅ STEP 3: Pass MSH³ metrics to HubMetricsBar
         currentMonthMSH: currentMonthMSH.length,
